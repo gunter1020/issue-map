@@ -1,0 +1,50 @@
+# Dependabot config — 升級流由 dependabot 開 PR，CI（lint + format + tsc + test）
+# 當 quality gate。這裡不做自動 merge；要的話得另外裝 auto-merge action。
+version: 2
+
+updates:
+  # 這個 repo 沒有 runtime 依賴，devDependencies 只有 oxlint / oxfmt / tsc / @types/bun。
+  # 註：dependabot 的 bun ecosystem 會同步更新 package.json 與 bun.lock；
+  # 若哪天抓不到 bun.lock，改成 package-ecosystem: npm。
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    # cooldown：新版發佈後等 7 天再提升級 PR，避開剛發佈就被汙染／撤回的版本
+    cooldown:
+      default-days: 7
+    groups:
+      # minor + patch 一包 PR，major 個別開 —— 工具鏈的 major 常帶規則變動，
+      # 混在一包裡會看不出是哪個套件把 CI 弄紅的。
+      dev-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions 的第三方 action 都釘 SHA，靠 dependabot 才會動；
+  # security advisory 來時要能立即升。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - ci
+      - dependencies
+    commit-message:
+      prefix: 'chore(ci)'
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - '*'
