@@ -12,7 +12,9 @@
 bunx github:gunter1020/issue-map
 ```
 
-起在 `http://localhost:4747`。每次重新整理都重抓 GitHub，看到的一定是現在的狀態。repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
+起在 `http://localhost:4747` **並直接開瀏覽器**。每次重新整理都重抓 GitHub，看到的一定是現在的狀態。repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
+
+不要自動開分頁就設 `ISSUE_MAP_OPEN=0`。
 
 只要一份靜態 HTML 的話（`-p` 是用來選另一個 bin 的，少了它會變成起 server）：
 
@@ -45,6 +47,7 @@ bunx -p github:gunter1020/issue-map issue-map-build out.html
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 可以動工時圖上叫人跑的指令                                         |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | 還要評估時圖上叫人跑的指令                                         |
 | `ISSUE_MAP_PORT`           | `4747`                            | server 的 port                                                     |
+| `ISSUE_MAP_OPEN`           | 開                                | 設 `0` 就不自動開瀏覽器（`bun --watch` 的開發模式預設關掉）        |
 
 兩個要特別想過的：
 
@@ -71,7 +74,7 @@ bunx -p github:gunter1020/issue-map issue-map-build out.html
 
 ```bash
 bun install
-bun run issue-map:serve   # --watch，改程式碼會自動重啟
+bun run issue-map:serve   # --watch，改程式碼會自動重啟；刻意不自動開瀏覽器（每存一次檔就會多一個分頁）
 bun run issue-map         # 只產檔到 dist/issue-map.html
 bun run check             # lint + format:check + typecheck
 bun test                  # 純模型那一層（分組、關鍵路徑、排版）

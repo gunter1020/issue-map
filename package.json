@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "issue-map": "bun run scripts/issue-map.ts",
-    "issue-map:serve": "bun --watch scripts/issue-map-serve.ts",
+    "issue-map:serve": "ISSUE_MAP_OPEN=0 bun --watch scripts/issue-map-serve.ts",
     "typecheck": "tsc --noEmit",
     "mutate": "bun run scripts/mutate.ts",
     "format": "oxfmt .",
