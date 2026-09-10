@@ -5,34 +5,27 @@ on:
     branches:
       - main
 
-# 預設收到最小權限，各 job 自己加回需要的
 permissions:
   contents: read
 
 jobs:
-  # 累積 conventional commits，開／更新 release PR；release PR 被合併時才真的
-  # 打 tag、建 GitHub Release，並把 release_created 設成 true。
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write # 打 tag、建 Release、推 version bump commit
-      pull-requests: write # 開／更新 release PR
-      issues: write # release 時在關聯 issue 上留言與貼標
+      contents: write
+      pull-requests: write
+      issues: write
 
     steps:
-      # manifest 模式：版號的權威在 .release-please-manifest.json，策略在
-      # release-please-config.json（兩個都是 action 的預設檔名，不必用 with 指）。
-      #
-      # 刻意不設 release-type —— 那個 input 一給，action 就改走單一策略、
-      # 完全不讀 config 檔，於是 bump-minor-pre-major 與釘住的 0.1.0 全部失效，
-      # 而且不會有任何警告（首次跑就是這樣被判成 1.0.0 的）。
+      # 不設 release-type：給了它就走單一策略、不讀 release-please-config.json，
+      # bump-minor-pre-major 與 manifest 釘住的版號會靜默失效（首次跑就是這樣
+      # 被判成 1.0.0 的）。config 與 manifest 用的是 action 的預設檔名。
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
 
-    # 這個 repo 只有 root component（path 為 `.`），所以 action 除了 manifest 模式
-    # 的 releases_created 之外，也會給沒有 path 前綴的 release_created / tag_name。
+    # 單一 root component 才有這兩個沒有 path 前綴的 output
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -46,11 +39,10 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write # npm trusted publishing 的 OIDC token，缺這個一定 401
+      id-token: write # npm trusted publishing 的 OIDC token
 
     steps:
-      # 釘在 release-please 剛打的 tag，而不是 main：避免 release PR 合併後又有人
-      # 推 main，publish 就發到一份沒被 tag 的程式碼。
+      # 釘 tag 而非 main：release PR 合併後若又有人推 main，發出去的會是沒被 tag 的碼
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
@@ -60,15 +52,11 @@ jobs:
           node-version: '24'
           registry-url: https://registry.npmjs.org
 
-      # trusted publishing 要 npm >= 11.5.1。Node 24 目前內建的已經夠新，但那是
-      # 「現在剛好夠」而不是保證，明寫一行才不會哪天 image 換版就靜默退回要 token。
+      # trusted publishing 要 npm >= 11.5.1；不靠 node image 內建的剛好夠新
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@latest
 
       # 不設 NODE_AUTH_TOKEN：有 token 時 npm 會走 token 而不是 OIDC。
-      # 發布來源與 provenance 由 npm 依 OIDC 自動簽，不必手動帶 --provenance。
-      #
-      # 這個套件沒有 build 步驟也沒有 runtime 依賴，package.json 的 files 直接
-      # 收原始 .ts 與 .html，所以 publish 前不需要 install。
+      # 沒有 build 步驟也沒有 runtime 依賴，所以不需要先 install。
       - name: Publish
         run: npm publish

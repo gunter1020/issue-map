@@ -1,18 +1,16 @@
 name: CI
 
-# 刻意不設 paths-ignore：verify 是 required status check，被 path 過濾掉的
-# workflow 不會回報 check，PR 會永遠卡在 pending。
+# 不設 paths-ignore：verify 是 required status check，被 path 過濾掉的 workflow
+# 不回報 check，PR 會永遠卡在 pending。
 on:
   pull_request:
     branches:
       - main
 
-# 同一支 PR 有新 push 時取消上一輪未完成的 CI
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# least-privilege：CI 只讀原始碼
 permissions:
   contents: read
 
@@ -26,9 +24,8 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: '1.x' # 鎖 major，自動吃最新 1.x
+          bun-version: '1.x'
 
-      # 這個 repo 沒有 runtime 依賴，裝的全是 devDependencies（oxlint / oxfmt / tsc）
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -41,6 +38,5 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      # package.json 沒有 test script：bun 內建 runner 直接掃 tests/
       - name: Tests
         run: bun test

@@ -1,24 +1,12 @@
-# Dependabot config — 升級流由 dependabot 開 PR，CI（lint + format + tsc + test）
-# 當 quality gate。這裡不做自動 merge；要的話得另外裝 auto-merge action。
-#
-# **這裡沒有 package-ecosystem: bun，是刻意的。** 本機 bun 1.4.x 寫出來的 bun.lock 是
-# `lockfileVersion: 2`，而 dependabot updater image 內建的 bun 只讀到 1，job 會直接掛：
-#
-#     Dependabot::DependencyFileNotSupported
-#     Unsupported bun.lock 'lockfileVersion' 2 in /bun.lock.
-#
-# 上游追蹤 https://github.com/dependabot/dependabot-core/issues/15848。
-# 換 package-ecosystem: npm 不能解——這個 repo 沒有 package-lock.json，dependabot 只會
-# 改 package.json 而不動 bun.lock，CI 的 `bun install --frozen-lockfile` 反而每支都紅。
-#
-# 回收條件：dependabot 的 bun 升到讀得懂 lockfileVersion 2 之後把 bun 那段加回來，
-# 原本的寫法在 commit 28c516d。在那之前 devDependencies（oxlint / oxfmt / typescript /
-# @types/bun）手動升；這個 repo 沒有 runtime 依賴，漏升的風險只在開發工具鏈。
+# 沒有 package-ecosystem: bun 是刻意的：本機 bun 1.4.x 寫的 bun.lock 是
+# lockfileVersion 2，dependabot updater 內建的 bun 只讀到 1，job 直接掛
+# （dependabot/dependabot-core#15848）。改用 npm ecosystem 不能解——這裡沒有
+# package-lock.json，dependabot 只會改 package.json 不動 bun.lock，CI 的
+# --frozen-lockfile 反而每支 PR 都紅。dependabot 支援後把 bun 那段加回來
+# （原本的寫法在 commit 28c516d），在那之前 devDependencies 手動升。
 version: 2
 
 updates:
-  # GitHub Actions 的第三方 action 都釘 SHA，靠 dependabot 才會動；
-  # security advisory 來時要能立即升。
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -28,6 +16,7 @@ updates:
       - dependencies
     commit-message:
       prefix: 'chore(ci)'
+    # 避開剛發佈就被汙染／撤回的版本
     cooldown:
       default-days: 7
     groups:
