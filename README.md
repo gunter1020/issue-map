@@ -14,12 +14,14 @@ bunx github:gunter1020/issue-map
 
 起在 `http://localhost:4747`。每次重新整理都重抓 GitHub，看到的一定是現在的狀態。repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
 
-只要一份靜態 HTML 的話：
+只要一份靜態 HTML 的話（`-p` 是用來選另一個 bin 的，少了它會變成起 server）：
 
 ```bash
-bunx github:gunter1020/issue-map issue-map-build            # 寫到 dist/issue-map.html
-bunx github:gunter1020/issue-map issue-map-build out.html
+bunx -p github:gunter1020/issue-map issue-map-build            # 寫到 dist/issue-map.html
+bunx -p github:gunter1020/issue-map issue-map-build out.html
 ```
+
+快照就是快照——狀態會過期，要看現在的狀態就用上面的 server。
 
 ## 前置條件
 
@@ -56,13 +58,14 @@ bunx github:gunter1020/issue-map issue-map-build out.html
 
 ## 檔案
 
-| 檔案                         | 責任                                                                 |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `scripts/issue-map.ts`       | 抓快照、算每張票的狀態與下一步、產出 HTML。移植設定在裡面的 `CONFIG` |
-| `scripts/issue-map-model.ts` | 純資料模型：分組、關鍵路徑。前後端共用                               |
-| `scripts/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                                  |
-| `scripts/issue-map.html`     | 樣板。兩個佔位區塊（`issue-map-data`、`issue-map-code`）會被填入     |
-| `scripts/issue-map-serve.ts` | 本機 server，每個請求重抓一次                                        |
+| 檔案                         | 責任                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| `scripts/issue-map.ts`       | 抓快照、算每張票的狀態與下一步、產出 HTML。移植設定在裡面的 `CONFIG`   |
+| `scripts/issue-map-model.ts` | 純資料模型：分組、關鍵路徑。前後端共用                                 |
+| `scripts/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                                    |
+| `scripts/issue-map.html`     | 樣板。兩個佔位區塊（`issue-map-data`、`issue-map-code`）會被填入       |
+| `scripts/issue-map-serve.ts` | 本機 server，每個請求重抓一次                                          |
+| `scripts/mutate.ts`          | 突變測試：改壞一行看測試會不會紅。守門測試的反向驗證用它，不要手改檔案 |
 
 ## 在這個 repo 裡開發
 
@@ -71,6 +74,15 @@ bun install
 bun run issue-map:serve   # --watch，改程式碼會自動重啟
 bun run issue-map         # 只產檔到 dist/issue-map.html
 bun run check             # lint + format:check + typecheck
+bun test                  # 純模型那一層（分組、關鍵路徑、排版）
+```
+
+這個 repo 自己還沒有 issue，`GH_REPO=<owner>/<repo>` 指到有票的 repo 才畫得出東西。
+
+`tests/` 只守會讓地圖說謊或不能看的事，外觀（顏色、形狀、間距）刻意不驗。新增守門測試要走反向驗證——把它宣稱要擋的缺陷放回產品碼，確認它會紅：
+
+```bash
+bun run mutate scripts/issue-map-model.ts tests/issue-map-layout.test.ts
 ```
 
 ## 兩個設計上的決定，改之前先知道

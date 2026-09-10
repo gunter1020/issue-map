@@ -21,5 +21,6 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["scripts/**/*.ts"]
+  // 測試也納入檢查：量測工具出錯比出貨程式出錯更難發現，因為錯的是「用來判斷對錯的那把尺」。
+  "include": ["scripts/**/*.ts", "tests/**/*.ts"]
 }

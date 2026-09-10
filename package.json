@@ -12,6 +12,7 @@
     "issue-map": "bun run scripts/issue-map.ts",
     "issue-map:serve": "bun --watch scripts/issue-map-serve.ts",
     "typecheck": "tsc --noEmit",
+    "mutate": "bun run scripts/mutate.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
