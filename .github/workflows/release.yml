@@ -22,11 +22,17 @@ jobs:
       issues: write # release 時在關聯 issue 上留言與貼標
 
     steps:
+      # manifest 模式：版號的權威在 .release-please-manifest.json，策略在
+      # release-please-config.json（兩個都是 action 的預設檔名，不必用 with 指）。
+      #
+      # 刻意不設 release-type —— 那個 input 一給，action 就改走單一策略、
+      # 完全不讀 config 檔，於是 bump-minor-pre-major 與釘住的 0.1.0 全部失效，
+      # 而且不會有任何警告（首次跑就是這樣被判成 1.0.0 的）。
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          release-type: node # 認得 package.json 的 version，順便寫 CHANGELOG.md
 
+    # 這個 repo 只有 root component（path 為 `.`），所以 action 除了 manifest 模式
+    # 的 releases_created 之外，也會給沒有 path 前綴的 release_created / tag_name。
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
