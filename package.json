@@ -2,7 +2,13 @@
   "name": "issue-map",
   "version": "0.1.0",
   "description": "把 GitHub Issues 的阻擋關係畫成一頁開發地圖：哪幾張票現在可以動、哪幾張在等誰、關鍵路徑是哪一條。",
-  "keywords": ["github", "issues", "dependency-graph", "cli", "bun"],
+  "keywords": [
+    "bun",
+    "cli",
+    "dependency-graph",
+    "github",
+    "issues"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gunter1020/issue-map.git"
@@ -11,7 +17,6 @@
     "issue-map": "./scripts/issue-map-serve.ts",
     "issue-map-build": "./scripts/issue-map.ts"
   },
-  "type": "module",
   "files": [
     "scripts/issue-map.ts",
     "scripts/issue-map-model.ts",
@@ -19,9 +24,7 @@
     "scripts/issue-map-serve.ts",
     "scripts/issue-map.html"
   ],
-  "engines": {
-    "bun": ">=1.0.0"
-  },
+  "type": "module",
   "scripts": {
     "issue-map": "bun run scripts/issue-map.ts",
     "issue-map:serve": "ISSUE_MAP_OPEN=0 bun --watch scripts/issue-map-serve.ts",
@@ -38,5 +41,8 @@
     "oxfmt": "^0.62.0",
     "oxlint": "^1.76.0",
     "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   }
 }
