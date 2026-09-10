@@ -9,8 +9,10 @@
 在**要看的那個 repo** 裡跑：
 
 ```bash
-bunx github:gunter1020/issue-map
+bunx github:gunter1020/issue-map#main
 ```
+
+`#main` 不是裝飾：**不帶 ref 的話 bun 會一直用第一次解析到的那個 commit**。實測過——先跑不帶 ref 的版本，之後 repo 推了新 commit，再跑同一行還是拿到舊的（`~/.bun/install/cache/@GH@gunter1020-issue-map-<sha>@@@1` 看得到是哪一個），加上 `#main` 才拿到新的。
 
 起在 `http://localhost:4747` **並直接開瀏覽器**。每次重新整理都重抓 GitHub，看到的一定是現在的狀態。repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
 
@@ -19,8 +21,8 @@ bunx github:gunter1020/issue-map
 只要一份靜態 HTML 的話（`-p` 是用來選另一個 bin 的，少了它會變成起 server）：
 
 ```bash
-bunx -p github:gunter1020/issue-map issue-map-build            # 寫到 dist/issue-map.html
-bunx -p github:gunter1020/issue-map issue-map-build out.html
+bunx -p github:gunter1020/issue-map#main issue-map-build            # 寫到 dist/issue-map.html
+bunx -p github:gunter1020/issue-map#main issue-map-build out.html
 ```
 
 快照就是快照——狀態會過期，要看現在的狀態就用上面的 server。
