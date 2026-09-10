@@ -6,5 +6,8 @@
   "printWidth": 100,
   // 這個 repo 只能用 LF。寫明而不是靠預設：schema 沒有宣告 default，靠沒寫出來的預設就是
   //「改一邊而另一邊不會紅」。
-  "endOfLine": "lf"
+  "endOfLine": "lf",
+  // CHANGELOG.md 由 release-please 產生，用 `*` 當項目符號、標題前空兩行；oxfmt 要 `-`
+  // 跟一行。排它等於每支 release PR 都紅，而排完下次發版又被覆蓋回去。
+  "ignorePatterns": ["CHANGELOG.md"]
 }
