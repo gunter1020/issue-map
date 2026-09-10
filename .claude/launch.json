@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "autoVerify": false,
+  "configurations": [
+    {
+      "name": "issue-map",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "issue-map:serve"],
+      "port": 4747,
+      "autoPort": true
+    }
+  ]
+}

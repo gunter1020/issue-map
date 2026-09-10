@@ -1,0 +1,13 @@
+# 行尾一律 LF（本專案只能用 LF）。
+#
+# 支援 EditorConfig 的編輯器存檔時使用 LF；`.gitattributes` 負責 Git 的文字檔行尾正規化。
+# `bun run format:check` 透過 oxfmt 檢查其支援且未被排除的檔案，不另做全 repo 的行尾檢查。
+#
+# **刻意只管行尾與編碼。** 縮排、引號、行寬那些歸 oxfmt（`.oxfmtrc.json`，`bun run format`），
+# 而在這裡再寫一份會變成第二個宣告處——`.editorconfig` 這一邊不會紅，所以飄移的方向一定是
+# 「編輯器照 A 排、CI 要求 B」。要改格式政策就去改那一份。
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8

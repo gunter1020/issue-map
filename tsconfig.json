@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    // DOM 是給 `scripts/issue-map-page.ts` 的——那一支跑在瀏覽器裡，建置時被打包進 HTML。
+    // DOM.Iterable 是必要的，不是保險：那一支用 `for...of` 走 `querySelectorAll` 的結果，少了它
+    // `NodeListOf` 沒有 iterator，typecheck 會紅 9 條。
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "types": ["bun"]
+  },
+  "include": ["scripts/**/*.ts"]
+}

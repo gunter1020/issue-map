@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  // 四項都跟原生地的 trpg-keeper 一致：這幾支原始碼是在那個設定下排版的，換一套就會整批改動。
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 100,
+  // 這個 repo 只能用 LF。寫明而不是靠預設：schema 沒有宣告 default，靠沒寫出來的預設就是
+  //「改一邊而另一邊不會紅」。
+  "endOfLine": "lf"
+}

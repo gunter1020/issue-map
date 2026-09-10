@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // 只開這三類。style 與 pedantic 絕大多數是格式與寫法偏好，格式歸 oxfmt。
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "plugins": ["import"],
+  "rules": {
+    // 抓 GitHub 快照是序列的：一個 `gh` 行程問完就結束，沒有可以並發的地方。
+    "no-await-in-loop": "off",
+    "import/no-cycle": [
+      "error",
+      {
+        "ignoreTypes": true
+      }
+    ]
+  },
+  "ignorePatterns": ["dist", "node_modules"]
+}

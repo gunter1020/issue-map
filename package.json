@@ -1,0 +1,27 @@
+{
+  "name": "issue-map",
+  "version": "0.1.0",
+  "private": true,
+  "description": "把 GitHub Issues 的阻擋關係畫成一頁開發地圖：哪幾張票現在可以動、哪幾張在等誰、關鍵路徑是哪一條。",
+  "bin": {
+    "issue-map": "./scripts/issue-map-serve.ts",
+    "issue-map-build": "./scripts/issue-map.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "issue-map": "bun run scripts/issue-map.ts",
+    "issue-map:serve": "bun --watch scripts/issue-map-serve.ts",
+    "typecheck": "tsc --noEmit",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "check": "bun run lint && bun run format:check && bun run typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.76.0",
+    "typescript": "^5"
+  }
+}

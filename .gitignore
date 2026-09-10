@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+
+# Claude Code 在 repo 裡的目錄預設進版控（launch.json 是共用的工作方式）。只擋機器本機的東西。
+.claude/worktrees/
+.claude/settings.local.json

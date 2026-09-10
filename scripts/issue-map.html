@@ -1,0 +1,878 @@
+<title>開發地圖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+/>
+<style>
+  :root {
+    --paper: #f4f6f7;
+    --card: #ffffff;
+    --ink: #13181d;
+    --muted: #626d78;
+    --faint: #8b949e;
+    --line: #dce1e6;
+    --line-strong: #c3ccd4;
+
+    /* 狀態色。go／wait／done 之外多一個 active，因為這裡的票會有人接手。 */
+    --go: #0f7b5f;
+    --go-soft: #e8f6f0;
+    --wait: #b45309;
+    --wait-soft: #fdf4e7;
+    --done: #55616f;
+    /* 圖標用的淺色。徽章的小字得撐 4.5:1，圖標只要看得出形狀，分兩支才不會互相綁死。 */
+    --done-mark: #b8c2cc;
+    --done-soft: #eef1f5;
+    --active: #4f46b8;
+    --active-soft: #e8e6f8;
+    --aside: #a03585;
+    --aside-soft: #fceaf6;
+
+    /* 每一組子票一條線的顏色，與狀態色無關。 */
+    --t1: #1f6f8b;
+    --t2: #7a4a92;
+    --t3: #8c5a24;
+    --t4: #2f7a5a;
+
+    --display: 'Bricolage Grotesque', 'Noto Sans TC', 'PingFang TC', sans-serif;
+    --body: 'Public Sans', 'Noto Sans TC', 'PingFang TC', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --paper: #11151a;
+      --card: #181d24;
+      --ink: #e8ecf0;
+      --muted: #9aa4af;
+      --faint: #6f7984;
+      --line: #262d36;
+      --line-strong: #3a434e;
+      --go: #4fbf94;
+      --go-soft: #10332a;
+      --wait: #e0a34a;
+      --wait-soft: #362614;
+      --done: #8b98a8;
+      --done-mark: #485564;
+      --done-soft: #202832;
+      --active: #a99cf0;
+      --active-soft: #262040;
+      --aside: #e07ac0;
+      --aside-soft: #3a1c31;
+      --t1: #6fb4d0;
+      --t2: #c093dd;
+      --t3: #d9a26a;
+      --t4: #5fc297;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme='dark'] {
+    --paper: #11151a;
+    --card: #181d24;
+    --ink: #e8ecf0;
+    --muted: #9aa4af;
+    --faint: #6f7984;
+    --line: #262d36;
+    --line-strong: #3a434e;
+    --go: #4fbf94;
+    --go-soft: #10332a;
+    --wait: #e0a34a;
+    --wait-soft: #362614;
+    --done: #8b98a8;
+    --done-mark: #485564;
+    --done-soft: #202832;
+    --active: #a99cf0;
+    --active-soft: #262040;
+    --aside: #e07ac0;
+    --aside-soft: #3a1c31;
+    --t1: #6fb4d0;
+    --t2: #c093dd;
+    --t3: #d9a26a;
+    --t4: #5fc297;
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    color: inherit;
+  }
+  a:focus-visible,
+  button:focus-visible,
+  .node:focus-visible {
+    outline: 2px solid var(--go);
+    outline-offset: 2px;
+  }
+
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 24px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+  /*
+   * flex 子項的 min-width 預設是 auto，也就是「不縮到比內容還窄」。線路圖與表格都比視窗寬，
+   * 不寫這一行的話它們會把整頁撐開、變成整頁橫向捲，而不是各自在自己的框裡捲。
+   */
+  .page > *,
+  section.group,
+  #groups > * {
+    min-width: 0;
+  }
+
+  /* ---------- 抬頭 ---------- */
+
+  header.masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(28px, 4.2vw, 40px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .lede {
+    max-width: 64ch;
+    margin: 0;
+    font-size: 15.5px;
+    color: var(--muted);
+  }
+  .lede strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .lede a {
+    color: var(--go);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line-strong);
+  }
+
+  /* 統計併成一條，不是五張卡。 */
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--card);
+  }
+  .stat {
+    flex: 1 1 120px;
+    padding: 14px 18px;
+    border-right: 1px solid var(--line);
+    border-top: 2px solid var(--line);
+  }
+  .stat[data-tone='ready'] {
+    border-top-color: var(--go);
+  }
+  .stat[data-tone='active'] {
+    border-top-color: var(--active);
+  }
+  .stat[data-tone='blocked'] {
+    border-top-color: var(--wait);
+  }
+  .stat[data-tone='triage'] {
+    border-top-color: var(--aside);
+  }
+  .stat:last-child {
+    border-right: 0;
+  }
+  .stat b {
+    display: block;
+    font-family: var(--display);
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat b small {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--faint);
+    margin-left: 5px;
+  }
+  .stat span {
+    display: block;
+    margin-top: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .stat[data-tone='ready'] b {
+    color: var(--go);
+  }
+  .stat[data-tone='active'] b {
+    color: var(--active);
+  }
+  .stat[data-tone='blocked'] b {
+    color: var(--wait);
+  }
+  .stat[data-tone='triage'] b {
+    color: var(--aside);
+  }
+
+  /* ---------- 選取的那張票 ---------- */
+
+  .detail {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 24px;
+    align-items: start;
+  }
+  .detail[data-status='ready'] {
+    border-left-color: var(--go);
+    background: var(--go-soft);
+  }
+  .detail[data-status='active'] {
+    border-left-color: var(--active);
+  }
+  .detail[data-status='blocked'] {
+    border-left-color: var(--wait);
+  }
+  .detail[data-status='triage'] {
+    border-left-color: var(--aside);
+  }
+  .detail[data-status='done'] {
+    border-left-color: var(--done);
+  }
+  .detail h3 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.35;
+  }
+  .detail h3 .num {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-right: 9px;
+    font-variant-numeric: tabular-nums;
+  }
+  .detail .rows {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 5px 18px;
+    font-size: 13.5px;
+  }
+  .detail .rows dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    padding-top: 3px;
+  }
+  .detail .rows dd {
+    margin: 0;
+  }
+  .detail .rows dd a {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-decoration: none;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .detail .open {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    white-space: nowrap;
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 5px 10px;
+  }
+  .detail .open:hover {
+    color: var(--ink);
+  }
+
+  /* ---------- 分組與線路圖 ---------- */
+
+  #groups {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+  section.group {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+    padding: 0 0 9px 12px;
+    border-bottom: 1px solid var(--line-strong);
+    /* 左邊那道色帶就是這一組在圖上的線色，標頭與圖對得起來。 */
+    border-left: 3px solid var(--track, var(--line-strong));
+  }
+  .group-head h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .group-head .sub {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .group-head a {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .group-head a:hover {
+    color: var(--ink);
+  }
+
+  .fold {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    cursor: pointer;
+    align-self: center;
+  }
+  .fold:hover {
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+  section.group[data-folded='true'] .group-head h2 {
+    color: var(--muted);
+  }
+
+  .map-wrap {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--track, var(--line-strong));
+    border-radius: 2px;
+    overflow-x: auto;
+    padding: 14px 12px;
+  }
+  .map-wrap svg {
+    display: block;
+    font-family: var(--body);
+  }
+
+  /* 軌道。實線是前置關係，走完的那一段轉虛線。 */
+  .edge {
+    fill: none;
+    stroke: var(--track, var(--line-strong));
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .edge[data-done='true'] {
+    stroke: var(--line-strong);
+    stroke-dasharray: 5 4;
+    stroke-width: 2;
+  }
+
+  /* 站點：圓＝流程上的票，三角＝有人在做，菱形＝規格未定案。 */
+  .node {
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .node .mark {
+    fill: var(--card);
+    stroke: var(--track, var(--line-strong));
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+  .node .core {
+    fill: var(--go);
+    stroke: none;
+  }
+  .node .halo {
+    fill: none;
+    stroke: var(--go);
+    stroke-width: 1.8;
+    opacity: 0.55;
+  }
+  .node .sid {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .node .sdesc {
+    font-size: 10px;
+    fill: var(--muted);
+  }
+  .node:hover .sid {
+    fill: var(--go);
+  }
+  .node[data-status='ready'] .mark {
+    stroke: var(--go);
+    stroke-width: 3;
+  }
+  .node[data-status='ready'] .sid {
+    fill: var(--go);
+  }
+  .node[data-status='active'] .mark {
+    fill: var(--active);
+    stroke: var(--active);
+    stroke-width: 2;
+  }
+  .node[data-status='active'] .sid {
+    fill: var(--active);
+  }
+  .node[data-status='blocked'] .mark {
+    stroke: var(--wait);
+    stroke-width: 2;
+  }
+  .node[data-status='triage'] .mark {
+    fill: var(--aside-soft);
+    stroke: var(--aside);
+    stroke-width: 2;
+    stroke-dasharray: 3 2.5;
+  }
+  .node[data-status='triage'] .sid {
+    fill: var(--aside);
+  }
+  /* 已關閉的站點淺一階：它只是進度，不該跟還要做的票搶注意力。圖例用同一支色。 */
+  .node[data-status='done'] .mark {
+    fill: var(--done-mark);
+    stroke: none;
+  }
+  .node[data-status='done'] .sid {
+    fill: var(--faint);
+    font-weight: 500;
+  }
+  .node[data-status='done'] .sdesc {
+    fill: var(--faint);
+  }
+  .node.selected .mark {
+    stroke: var(--ink);
+    stroke-width: 3.5;
+  }
+  svg.has-selection .node:not(.lit) {
+    opacity: 0.22;
+  }
+  svg.has-selection .edge:not(.lit) {
+    opacity: 0.1;
+  }
+
+  /* 線名 */
+  .tname {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .tsub {
+    font-family: var(--mono);
+    font-size: 10px;
+    fill: var(--faint);
+  }
+
+  .map-key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .map-key span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .map-key i {
+    width: 13px;
+    height: 13px;
+    box-sizing: border-box;
+    flex: none;
+  }
+  .k-ready {
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--go) 0 3px, var(--card) 3px);
+    border: 2.5px solid var(--go);
+  }
+  .k-active {
+    background: var(--active);
+    clip-path: polygon(8% 0, 100% 50%, 8% 100%);
+  }
+  .k-blocked {
+    border-radius: 50%;
+    background: var(--card);
+    border: 2px solid var(--wait);
+  }
+  .k-triage {
+    background: var(--aside-soft);
+    border: 1.6px dashed var(--aside);
+    transform: rotate(45deg);
+  }
+  .k-done {
+    border-radius: 50%;
+    background: var(--done-mark);
+  }
+
+  /* ---------- 清單 ---------- */
+
+  .list-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .list-head .group-head {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 5px 9px;
+    cursor: pointer;
+  }
+  .tab[aria-pressed='true'] {
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+  .tab .n {
+    margin-left: 5px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 清單：一列是一張卡，不是表格 ---------- */
+
+  .rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .row {
+    display: grid;
+    /* 狀態固定在最後一欄、固定寬度，掃一眼那一欄就知道整份清單的狀況。 */
+    grid-template-columns: 132px minmax(0, 1fr) max-content 92px;
+    gap: 14px;
+    align-items: start;
+    padding: 11px 14px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .row:hover {
+    border-color: var(--line-strong);
+  }
+  .row:focus-visible {
+    outline: 2px solid var(--go);
+    outline-offset: 1px;
+  }
+  .row[data-status='ready'] {
+    border-left-color: var(--go);
+  }
+  .row[data-status='active'] {
+    border-left-color: var(--active);
+  }
+  .row[data-status='blocked'] {
+    border-left-color: var(--wait);
+  }
+  .row[data-status='triage'] {
+    border-left-color: var(--aside);
+  }
+  .row[data-status='done'] {
+    border-left-color: var(--done);
+    border-style: dashed;
+    background: transparent;
+  }
+  .row.selected {
+    background: var(--go-soft);
+    border-color: var(--go);
+  }
+  /* 主票是一組子票的標頭，子票往右縮。 */
+  .row[data-haskids='true'] {
+    background: var(--paper);
+  }
+  .row[data-parent] {
+    margin-left: 28px;
+  }
+
+  .row .id {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  }
+  .row .id .no {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid var(--line-strong);
+    font-variant-numeric: tabular-nums;
+  }
+  .row .id .no:hover {
+    border-bottom-color: currentColor;
+  }
+  .row .who {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+  }
+
+  .row .what {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .row.selected .what .title {
+    font-weight: 600;
+  }
+  .row .waits {
+    display: block;
+    margin-top: 3px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .row .waits .more {
+    color: var(--faint);
+  }
+
+  .row .step {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+  .row .step .next {
+    white-space: nowrap;
+  }
+  .row .gate {
+    display: flex;
+    justify-content: flex-start;
+  }
+  .row .gate .pill {
+    white-space: nowrap;
+  }
+
+  /* 可複製的指令。看起來就是可按的，按完當場說一聲。 */
+  .copy {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: var(--muted);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 2px 7px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .copy:hover {
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+  .copy[data-copied='true'] {
+    color: var(--go);
+    border-color: var(--go);
+    background: var(--go-soft);
+  }
+  .row[data-status='done'] .what,
+  .row[data-status='done'] .id .no {
+    color: var(--faint);
+  }
+
+  .fold-slot {
+    display: inline-flex;
+  }
+
+  /* 就地展開的細節：直接接在那一列後面，共用 .detail 的樣子。 */
+  .rows > .detail.expand {
+    margin: -2px 0 4px 28px;
+    border-left-width: 3px;
+  }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .pill[data-status='ready'] {
+    background: var(--go-soft);
+    color: var(--go);
+  }
+  .pill[data-status='active'] {
+    background: var(--active-soft);
+    color: var(--active);
+  }
+  .pill[data-status='blocked'] {
+    background: var(--wait-soft);
+    color: var(--wait);
+  }
+  .pill[data-status='triage'] {
+    background: var(--aside-soft);
+    color: var(--aside);
+  }
+  .pill[data-status='done'] {
+    background: var(--done-soft);
+    color: var(--done);
+  }
+  .next {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .label {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    padding: 3px 6px;
+    border-radius: 2px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    margin-right: 4px;
+  }
+
+  footer {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.8;
+    color: var(--faint);
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  footer code {
+    color: var(--muted);
+  }
+
+  @media (max-width: 720px) {
+    .detail {
+      grid-template-columns: 1fr;
+    }
+    .row {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .row .step {
+      justify-content: flex-start;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+    }
+  }
+</style>
+
+<script id="issue-map-data" type="application/json">
+  {}
+</script>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 id="page-title">開發地圖</h1>
+    <p class="lede" id="lede"></p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="detail" id="detail"></div>
+
+  <div id="groups"></div>
+
+  <section class="group">
+    <div class="list-head">
+      <div class="group-head">
+        <h2>清單</h2>
+        <span class="sub" id="list-sub"></span>
+      </div>
+      <div class="tabs" id="tabs" role="group" aria-label="狀態篩選"></div>
+    </div>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <footer>
+    <div>狀態的權威是 GitHub Issues。這一頁是快照，頁面上不能改狀態。</div>
+    <div>
+      重跑 <code>bun run issue-map</code> 產檔，或
+      <code>bun run issue-map:serve</code> 讓重新整理就是最新。
+    </div>
+    <div id="foot-config"></div>
+  </footer>
+</div>
+
+<script id="issue-map-code"></script>
