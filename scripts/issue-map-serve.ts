@@ -4,7 +4,7 @@
  * 最新狀態。資料抓取與渲染都在 `issue-map.ts`，這支只負責包成完整 HTML 文件並回應。
  *
  * 這是 package.json 的預設 bin，所以在**要看的那個 repo** 裡直接跑就會畫那個 repo：
- *   bunx github:gunter1020/issue-map
+ *   bunx issue-map@latest
  *
  * 起來之後直接開瀏覽器。不要的話設 `ISSUE_MAP_OPEN=0`——`bun --watch` 的開發模式就是這樣關掉
  * 的，否則每存一次檔就多一個分頁。

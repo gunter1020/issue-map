@@ -11,7 +11,7 @@
  * 帶進快照的 issue：所有 open issue，加上仍被 open issue 牽著的 closed issue。後者畫成「已完成」
  * 的節點讓進度看得見，沒人牽著之後自然消失。
  *
- * **要畫哪個 repo**：從 cwd 的 git 推斷，不必填——在那個 repo 裡跑 `bunx github:gunter1020/issue-map`
+ * **要畫哪個 repo**：從 cwd 的 git 推斷，不必填——在那個 repo 裡跑 `bunx issue-map@latest`
  * 就好。要指定別的 repo 設 `GH_REPO`。標籤字彙與 parent 的慣例都能用環境變數調，見底下的
  * `CONFIG`，整份對照表在 README。
  *
