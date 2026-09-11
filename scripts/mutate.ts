@@ -11,7 +11,8 @@
  *   2. **重複度**——一行改壞紅了幾支。紅 20 支代表那 20 支在守同一件事。
  *
  * 只用**保型別**的算子（比較、布林、min/max 對調）。換掉會編譯失敗的東西沒有意義：那種 mutant
- * 一定「被殺掉」，而它殺的是編譯器不是測試。
+ * 一定「被殺掉」，而它殺的是編譯器不是測試。但算子保型別**不等於** mutant 保型別（見
+ * `typechecks`），所以每個 mutant 都還要實際過一次 `tsc`。
  *
  * 用法：
  *   bun run scripts/mutate.ts scripts/issue-map-model.ts tests/issue-map-layout.test.ts
@@ -91,24 +92,67 @@ const plan = (source: string): Mutant[] => {
   return out
 }
 
-/** 跑一次測試，回「紅了幾支」。`null` 代表跑不起來（編譯失敗或逾時），不計入分數。 */
-const runTests = async (targets: readonly string[], timeoutMs: number): Promise<number | null> => {
+/**
+ * 一次測試的結果。
+ *
+ * `timeout` 和 `broken` 要分開：**逾時算殺掉**——把迴圈的離開條件改反，測試就跑不完，那正是
+ * 測試把缺陷擋下來了（Stryker、PIT 也都這樣算）。編譯失敗或 crash 才是不計分，因為殺掉它的
+ * 是編譯器不是測試。
+ */
+type RunResult =
+  | { readonly kind: 'ran'; readonly failed: number }
+  | { readonly kind: 'timeout' }
+  | { readonly kind: 'broken' }
+
+/**
+ * 型別檢查現在磁碟上的內容。編譯不過的 mutant 不計分——殺掉它的是編譯器不是測試。
+ *
+ * **保型別的算子不等於保型別的 mutant。** `===` → `!==` 會把 narrowing 的方向一起翻過來：
+ *
+ * ```ts
+ * if (back === undefined) break   // 之後 back 收斂成 number
+ * at = back                       // 編譯得過
+ * ```
+ *
+ * 換成 `!==` 之後 `back` 收斂成 `undefined`，`at = back` 就是 TS2322。而 `bun test` 只剝型別、
+ * 不檢查型別，這種 mutant 照樣跑得起來、測試照樣紅，於是被誤記成「測試殺掉的」，把突變分數灌水。
+ * Stryker 用 typescript-checker 解同一個問題，而且同樣排在 test runner 之前。
+ */
+const typechecks = async (): Promise<boolean> => {
+  const proc = spawn(['bunx', 'tsc', '--noEmit'], { stdout: 'pipe', stderr: 'pipe' })
+  await new Response(proc.stdout).text()
+  await new Response(proc.stderr).text()
+  return (await proc.exited) === 0
+}
+
+/** 跑一次測試。 */
+const runTests = async (targets: readonly string[], timeoutMs: number): Promise<RunResult> => {
   const proc = spawn(['bun', 'test', ...targets], { stdout: 'pipe', stderr: 'pipe' })
+  let timedOut = false
   const timer = setTimeout(() => {
+    timedOut = true
     proc.kill()
   }, timeoutMs)
   try {
     const out = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text())
     await proc.exited
+    if (timedOut) return { kind: 'timeout' }
     const fail = /^\s*(\d+) fail/m.exec(out)
     const pass = /^\s*(\d+) pass/m.exec(out)
     // 一支都沒跑起來＝編譯失敗或 crash，那不是「測試抓到了」
-    if (!pass && !fail) return null
-    return fail ? Number(fail[1]) : 0
+    if (!pass && !fail) return { kind: 'broken' }
+    return { kind: 'ran', failed: fail ? Number(fail[1]) : 0 }
   } finally {
     clearTimeout(timer)
   }
 }
+
+/** 基準沒得比，給寬一點。 */
+const BASELINE_TIMEOUT_MS = 120_000
+/** mutant 的逾時＝基準的幾倍。會 hang 的 mutant 是常態，等它跑完只是浪費。 */
+const TIMEOUT_FACTOR = 20
+/** 逾時下限。基準只有幾毫秒時不能真的照倍數算。 */
+const MIN_TIMEOUT_MS = 2_000
 
 const main = async (): Promise<number> => {
   const [target, ...testTargets] = process.argv.slice(2)
@@ -129,15 +173,29 @@ const main = async (): Promise<number> => {
   const scope = testTargets.length > 0 ? testTargets.join(' ') : '全套'
   console.log(`${target}：${mutants.length} 個 mutant，測試範圍 ${scope}`)
 
-  // 先確認基準是綠的。基準就紅的話後面每個數字都沒有意義
-  const baseline = await runTests(testTargets, 120_000)
-  if (baseline === null || baseline > 0) {
-    console.error(`基準不是綠的（紅 ${baseline ?? '跑不起來'}），先把測試修綠再量`)
+  // 基準自己就編不過的話，後面每個 mutant 都會被判成「編譯不過」，報表會變成一片空白
+  if (!(await typechecks())) {
+    console.error('基準的 typecheck 就不過了，先跑 bun run check')
     return 1
   }
 
+  // 先確認基準是綠的。基準就紅的話後面每個數字都沒有意義
+  const started = performance.now()
+  const baseline = await runTests(testTargets, BASELINE_TIMEOUT_MS)
+  const baselineMs = performance.now() - started
+  if (baseline.kind !== 'ran' || baseline.failed > 0) {
+    const why =
+      baseline.kind === 'ran' ? `紅 ${baseline.failed} 支` : `跑不起來（${baseline.kind}）`
+    console.error(`基準不是綠的（${why}），先把測試修綠再量`)
+    return 1
+  }
+
+  // 照基準抓逾時。固定 120 秒的話，一個無窮迴圈的 mutant 就能讓整輪從一秒變一分鐘
+  const timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.ceil(baselineMs * TIMEOUT_FACTOR))
+
   const survivors: Mutant[] = []
   const killCounts: { readonly mutant: Mutant; readonly failed: number }[] = []
+  let timeouts = 0
   let broken = 0
 
   try {
@@ -146,26 +204,39 @@ const main = async (): Promise<number> => {
       patched[mutant.line - 1] = mutant.text
       await Bun.write(target, patched.join('\n'))
 
-      const failed = await runTests(testTargets, 120_000)
-      const mark = failed === null ? '·' : failed === 0 ? '✗' : '✓'
+      // 型別檢查排在測試之前：編譯不過的 mutant 不必也不該跑
+      const result: RunResult = (await typechecks())
+        ? await runTests(testTargets, timeoutMs)
+        : { kind: 'broken' }
+      const mark =
+        result.kind === 'broken'
+          ? '·'
+          : result.kind === 'timeout'
+            ? '⏱'
+            : result.failed === 0
+              ? '✗'
+              : '✓'
       process.stdout.write(
         `\r[${index + 1}/${mutants.length}] ${mark} ${mutant.line}: ${mutant.from}→${mutant.to}      `,
       )
 
-      if (failed === null) broken += 1
-      else if (failed === 0) survivors.push(mutant)
-      else killCounts.push({ mutant, failed })
+      if (result.kind === 'broken') broken += 1
+      else if (result.kind === 'timeout') timeouts += 1
+      else if (result.failed === 0) survivors.push(mutant)
+      else killCounts.push({ mutant, failed: result.failed })
     }
   } finally {
     // **一定要還原。** 中途 Ctrl+C 留下一個改壞的檔案比沒有這支腳本糟得多
     await Bun.write(target, original)
   }
 
-  const scored = survivors.length + killCounts.length
+  const killed = killCounts.length + timeouts
+  const scored = survivors.length + killed
   console.log(`\n\n── 突變分數 ──`)
   console.log(
-    `殺掉 ${killCounts.length}／${scored}` +
-      (scored > 0 ? `　${Math.round((killCounts.length / scored) * 100)}%` : '') +
+    `殺掉 ${killed}／${scored}` +
+      (scored > 0 ? `　${Math.round((killed / scored) * 100)}%` : '') +
+      (timeouts > 0 ? `　（含 ${timeouts} 個逾時，逾時算殺掉）` : '') +
       (broken > 0 ? `　（另有 ${broken} 個跑不起來，不計入）` : ''),
   )
 
