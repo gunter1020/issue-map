@@ -424,6 +424,7 @@
   }
 
   .map-wrap {
+    position: relative;
     background: var(--card);
     border: 1px solid var(--line);
     border-top: 2px solid var(--track, var(--line-strong));
@@ -537,17 +538,42 @@
   }
 
   /* 線名 */
-  .tname {
+  /* 線名。畫在 SVG 外面的一欄，這樣長的名字用 text-overflow 就截得掉——SVG 的 <text> 不會
+     換行也不會自己截斷，長一點就會蓋到第一個站點上。寬度比 MAP.gutter 少一點，留白給站點。 */
+  .tlabel {
+    position: absolute;
+    left: 12px;
+    width: 84px;
+    transform: translateY(-12px);
     font-family: var(--mono);
+    pointer-events: none;
+  }
+  .tlabel b,
+  .tlabel span {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tlabel b {
     font-size: 12px;
     font-weight: 600;
-    fill: var(--muted);
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
-  .tsub {
-    font-family: var(--mono);
+  .tlabel span {
     font-size: 10px;
-    fill: var(--faint);
+    color: var(--faint);
+  }
+
+  /* 沒有畫圖的那幾組。 */
+  .undrawn {
+    margin: 0;
+    padding: 14px 12px;
+    color: var(--faint);
+    font-size: 13px;
+    border: 1px dashed var(--line);
+    border-radius: 2px;
   }
 
   .map-key {

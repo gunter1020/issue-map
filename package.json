@@ -26,6 +26,7 @@
     "scripts/issue-map-i18n.ts",
     "scripts/issue-map-model.ts",
     "scripts/issue-map-page.ts",
+    "scripts/issue-map-view.ts",
     "scripts/issue-map-serve.ts",
     "scripts/issue-map.html"
   ],

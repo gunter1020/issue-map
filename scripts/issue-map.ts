@@ -15,6 +15,7 @@
 
 import { spawnSync } from 'bun'
 
+import { LOCALE_NAME, LOCALES, t } from './issue-map-i18n.ts'
 import {
   criticalPathOf,
   groupsOf,
@@ -23,6 +24,7 @@ import {
   type Snapshot,
   type Status,
 } from './issue-map-model.ts'
+import { esc, viewOf } from './issue-map-view.ts'
 
 const TEMPLATE = new URL('./issue-map.html', import.meta.url).pathname
 const CLIENT = new URL('./issue-map-page.ts', import.meta.url).pathname
@@ -100,6 +102,33 @@ const ISSUE_FIELDS = `
   blockedBy(first: 50) { nodes { number } }
 `
 
+type GraphQLError = { readonly type?: string; readonly message?: string }
+
+/**
+ * 從 `gh api graphql` 的輸出取出 data。
+ *
+ * **查不到的票不是錯誤。** 指名去要某個票號時，GitHub 會同時回 `data`（那個 alias 是 `null`）
+ * 與一筆 `NOT_FOUND`，而 `gh` 為了那筆錯誤以非零離開。號碼其實是 PR、票被轉移或刪掉、內文
+ * 慣例掃出來的誤判——在老 repo 上都是常態，一個掃不到就讓整張圖產不出來並不合理。所以只有
+ * `NOT_FOUND` 以外的錯誤才拋，資料照用。
+ *
+ * 連 data 都沒有（沒登入、網路不通）就拿 stderr 當原因拋出去。
+ */
+export function dataOrThrow<T>(stdout: string, stderr: string): T {
+  let parsed: { data?: T; errors?: readonly GraphQLError[] } | undefined
+  try {
+    parsed = stdout ? (JSON.parse(stdout) as typeof parsed) : undefined
+  } catch {
+    parsed = undefined
+  }
+  const fatal = (parsed?.errors ?? []).filter((error) => error.type !== 'NOT_FOUND')
+  if (!parsed?.data || fatal.length) {
+    const why = fatal.length ? JSON.stringify(fatal) : stderr.trim() || stdout.trim()
+    throw new Error(`gh api graphql failed: ${why}`)
+  }
+  return parsed.data
+}
+
 /**
  * 跑一次 `gh api graphql`。
  *
@@ -121,10 +150,7 @@ function run<T>(query: string, variables: Record<string, string> = {}): T {
   ]
   for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
   const result = spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
-  if (result.exitCode !== 0) throw new Error(`gh api graphql failed: ${result.stderr.toString()}`)
-  const parsed = JSON.parse(result.stdout.toString()) as { data: T; errors?: unknown }
-  if (parsed.errors) throw new Error(`GraphQL errors: ${JSON.stringify(parsed.errors)}`)
-  return parsed.data
+  return dataOrThrow<T>(result.stdout.toString(), result.stderr.toString())
 }
 
 const OPEN_QUERY = `
@@ -386,6 +412,55 @@ async function bundleClient(): Promise<string> {
   return output.text()
 }
 
+/**
+ * 把樣板裡某個容器的內容填掉。
+ *
+ * 樣板裡這些容器都是空的（`<div id="x"></div>`），所以只要在開頭標籤與結尾標籤之間插入即可，
+ * 不必真的剖析 HTML。填不到就是樣板被改壞了，直接喊。
+ */
+function fillById(html: string, id: string, body: string): string {
+  // 標籤名要吃得到數字，`h1`、`h2` 都是容器。
+  const marker = new RegExp(`(<[a-z][a-z0-9]*[^>]*\\sid="${id}"[^>]*>)(</[a-z][a-z0-9]*>)`)
+  const next = html.replace(marker, `$1${body}$2`)
+  if (next === html) throw new Error(`Template is missing an empty #${id}: ${TEMPLATE}`)
+  return next
+}
+
+/**
+ * 建置時就把整頁畫好。
+ *
+ * 標記由 `issue-map-view.ts` 產生，畫面那一支重畫時用的是同一批函式——所以沒有 JS 的環境看到的
+ * 是同一份頁面，只是不能互動。少了這一步，擋掉 inline script 的地方（嚴格 CSP、某些預覽窗）
+ * 拿到的會是一份空骨架。
+ *
+ * 預設語言是英文；換語言要有 JS，那本來就不是靜態檔能做的事。
+ */
+function prerender(html: string, snapshot: Snapshot): string {
+  const view = viewOf(snapshot)
+  const foot = view.footerHTML()
+  const detail = view.detailPanelHTML(view.defaultPick())
+  const rows = view.rowsHTML('all')
+  const title = view.title()
+  const filled: [string, string][] = [
+    ['eyebrow', esc(view.eyebrow())],
+    ['page-title', esc(title)],
+    ['lede', view.lede()],
+    ['stats', view.statsHTML()],
+    ['detail', detail.html],
+    ['groups', view.groupsHTML()],
+    ['list-title', esc(t('list.title'))],
+    ['list-sub', esc(t('list.count', { n: rows.shown }))],
+    ['tabs', view.tabsHTML('all')],
+    ['rows', rows.html],
+    ['foot-truth', foot.truth],
+    ['foot-refresh', foot.refresh],
+    ['foot-config', foot.config],
+    ['lang', LOCALES.map((l) => `<option value="${l}">${esc(LOCALE_NAME[l])}</option>`).join('')],
+  ]
+  const withBody = filled.reduce((acc, [id, body]) => fillById(acc, id, body), html)
+  return replaceIn(withBody, /(<title>)[\s\S]*?(<\/title>)/, esc(title), 'title')
+}
+
 /** 把快照塞進樣板。回傳的是 artifact 用的片段（沒有 doctype／html／head／body）。 */
 export async function renderFragment(snapshot: Snapshot): Promise<string> {
   const template = await Bun.file(TEMPLATE).text()
@@ -396,13 +471,26 @@ export async function renderFragment(snapshot: Snapshot): Promise<string> {
     JSON.stringify(snapshot).replaceAll('<', '\\u003c'),
     'issue-map-data',
   )
+  const withPage = prerender(withData, snapshot)
   return replaceIn(
-    withData,
+    withPage,
     /(<script id="issue-map-code">)[\s\S]*?(<\/script>)/,
     // 程式碼不能這樣逃脫——`a < b` 會被改壞。只擋真正會提早收尾的那一個序列。
     (await bundleClient()).replace(/<\/script/gi, '<\\/script'),
     'issue-map-code',
   )
+}
+
+/**
+ * 把片段包成一份完整文件。**直接開檔案看的一律走這裡**：少了 doctype 瀏覽器會進 quirks mode。
+ * charset 是防禦性的——從 `file://` 開沒有 header 可依靠，而這一頁帶著四種語言的文案。
+ *
+ * `lang` 是預設語言；頁面上換語言時畫面那一支會改掉 `documentElement.lang`。
+ */
+export async function renderDocument(snapshot: Snapshot): Promise<string> {
+  const head =
+    '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+  return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
 }
 
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
@@ -418,6 +506,6 @@ export function describe(snapshot: Snapshot): string {
 
 if (import.meta.main) {
   const snapshot = takeSnapshot()
-  await Bun.write(OUTPUT, await renderFragment(snapshot))
+  await Bun.write(OUTPUT, await renderDocument(snapshot))
   console.log(`Wrote ${OUTPUT}: ${describe(snapshot)}`)
 }

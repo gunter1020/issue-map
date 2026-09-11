@@ -34,6 +34,8 @@ as a skill, let the agent run it — which is where the default labels and comma
 - `ISSUE_MAP_PORT` pins the port. Pinned is strict: it fails rather than moving if taken.
 - `ISSUE_MAP_OPEN=0` stops the browser tab.
 - A static file goes stale. Use the server when you need the current state.
+- Where scripts cannot run (a strict CSP, some preview panes) the file falls back to a plain
+  listing of the issues rather than a blank page.
 - `@latest` takes the newest version on npm; pin one with `bunx issue-map@0.2.0`.
 
 ## Requirements
@@ -134,6 +136,6 @@ like `{ kind: 'waitChildren', count: 2 }`, assembled into words here.
 
 - **The page cannot change status.** No button writes back to GitHub. Status has exactly one source
   of truth, and a second entry point makes them disagree.
-- **Issue titles stay off the map.** Nodes carry only the number; names are in the list below. Any
-  short name written into the issue body is a second source of truth for the title — editing the
-  title does not update it.
+- **No separate short name.** Stations are labelled with the first few characters of the title.
+  A hand-maintained short name in the issue body would be a second source of truth — editing the
+  title would not update it. The list below carries the full titles.

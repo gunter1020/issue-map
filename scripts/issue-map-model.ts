@@ -183,6 +183,13 @@ export type Layout = {
   readonly height: number
 }
 
+/** 月台一列至少幾站。票很少時不要排成細細一條。 */
+const ISLAND_MIN_PER_ROW = 4
+/**
+ * 月台一列最多幾站。再寬下去橫向要捲很遠，而月台上的左右位置本來就不帶意義——寧可多幾列。
+ */
+const ISLAND_MAX_PER_ROW = 12
+
 /**
  * 把一組票排成線路圖。
  *
@@ -233,7 +240,9 @@ export function layoutOf(members: readonly MapIssue[]): Layout {
   }
 
   const depth = wired.length ? Math.max(...wired.map((m) => levelOf(m.number))) : 1
-  const perRow = Math.max(depth, 4)
+  // 月台排成接近正方形，不然沒有阻擋關係的 repo 會把整批票疊成一條幾千 px 高的直條。
+  const squarish = Math.ceil(Math.sqrt(island.length))
+  const perRow = Math.max(depth, Math.min(squarish, ISLAND_MAX_PER_ROW), ISLAND_MIN_PER_ROW)
   const xy = new Map<number, Point>()
   tracks.forEach((chain, index) => {
     for (const n of chain) {
