@@ -36,7 +36,7 @@ function openInBrowser(url: string): void {
   const result = spawnSync(command, { stdout: 'ignore', stderr: 'pipe' })
   if (!result.success) {
     console.error(
-      `打不開瀏覽器（${command[0]}：${result.stderr.toString().trim()}）——自己開上面那個網址`,
+      `Could not open the browser (${command[0]}: ${result.stderr.toString().trim()}) — open the URL above yourself`,
     )
   }
 }
@@ -72,5 +72,5 @@ const server = Bun.serve({
 })
 
 const url = `http://localhost:${server.port}`
-console.log(`開發地圖：${url}（重新整理就重抓 GitHub）`)
+console.log(`Dev map: ${url} (every refresh re-fetches from GitHub)`)
 if (OPEN) openInBrowser(url)
