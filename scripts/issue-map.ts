@@ -405,6 +405,18 @@ export async function renderFragment(snapshot: Snapshot): Promise<string> {
   )
 }
 
+/**
+ * 把片段包成一份完整文件。**直接開檔案看的一律走這裡**：少了 doctype 瀏覽器會進 quirks mode。
+ * charset 是防禦性的——從 `file://` 開沒有 header 可依靠，而這一頁帶著四種語言的文案。
+ *
+ * `lang` 是預設語言；頁面上換語言時畫面那一支會改掉 `documentElement.lang`。
+ */
+export async function renderDocument(snapshot: Snapshot): Promise<string> {
+  const head =
+    '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+  return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
+}
+
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
   const next = html.replace(marker, `$1${body}$2`)
   if (next === html) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
@@ -418,6 +430,6 @@ export function describe(snapshot: Snapshot): string {
 
 if (import.meta.main) {
   const snapshot = takeSnapshot()
-  await Bun.write(OUTPUT, await renderFragment(snapshot))
+  await Bun.write(OUTPUT, await renderDocument(snapshot))
   console.log(`Wrote ${OUTPUT}: ${describe(snapshot)}`)
 }

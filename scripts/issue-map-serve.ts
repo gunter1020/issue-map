@@ -20,7 +20,7 @@
 
 import { spawnSync } from 'bun'
 
-import { describe, renderFragment, takeSnapshot } from './issue-map.ts'
+import { describe, renderDocument, takeSnapshot } from './issue-map.ts'
 
 // `PORT` 是 Claude 桌面 app 的 launch.json 在 autoPort 換 port 時塞進來的。都沒設就是 0：
 // 由 OS 指派，`server.port` 才是真的在聽的那個。
@@ -46,11 +46,7 @@ function openInBrowser(url: string): void {
 async function page(): Promise<string> {
   const snapshot = takeSnapshot()
   console.log(describe(snapshot))
-  // 樣板是 artifact 用的片段；本機直接看要補上完整文件與 charset。
-  const head =
-    '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-  // `lang` 是預設語言；頁面上換語言時畫面那一支會改掉 `documentElement.lang`。
-  return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
+  return renderDocument(snapshot)
 }
 
 const server = Bun.serve({
