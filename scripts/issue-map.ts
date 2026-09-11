@@ -102,6 +102,33 @@ const ISSUE_FIELDS = `
   blockedBy(first: 50) { nodes { number } }
 `
 
+type GraphQLError = { readonly type?: string; readonly message?: string }
+
+/**
+ * 從 `gh api graphql` 的輸出取出 data。
+ *
+ * **查不到的票不是錯誤。** 指名去要某個票號時，GitHub 會同時回 `data`（那個 alias 是 `null`）
+ * 與一筆 `NOT_FOUND`，而 `gh` 為了那筆錯誤以非零離開。號碼其實是 PR、票被轉移或刪掉、內文
+ * 慣例掃出來的誤判——在老 repo 上都是常態，一個掃不到就讓整張圖產不出來並不合理。所以只有
+ * `NOT_FOUND` 以外的錯誤才拋，資料照用。
+ *
+ * 連 data 都沒有（沒登入、網路不通）就拿 stderr 當原因拋出去。
+ */
+export function dataOrThrow<T>(stdout: string, stderr: string): T {
+  let parsed: { data?: T; errors?: readonly GraphQLError[] } | undefined
+  try {
+    parsed = stdout ? (JSON.parse(stdout) as typeof parsed) : undefined
+  } catch {
+    parsed = undefined
+  }
+  const fatal = (parsed?.errors ?? []).filter((error) => error.type !== 'NOT_FOUND')
+  if (!parsed?.data || fatal.length) {
+    const why = fatal.length ? JSON.stringify(fatal) : stderr.trim() || stdout.trim()
+    throw new Error(`gh api graphql failed: ${why}`)
+  }
+  return parsed.data
+}
+
 /**
  * 跑一次 `gh api graphql`。
  *
@@ -123,10 +150,7 @@ function run<T>(query: string, variables: Record<string, string> = {}): T {
   ]
   for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
   const result = spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
-  if (result.exitCode !== 0) throw new Error(`gh api graphql failed: ${result.stderr.toString()}`)
-  const parsed = JSON.parse(result.stdout.toString()) as { data: T; errors?: unknown }
-  if (parsed.errors) throw new Error(`GraphQL errors: ${JSON.stringify(parsed.errors)}`)
-  return parsed.data
+  return dataOrThrow<T>(result.stdout.toString(), result.stderr.toString())
 }
 
 const OPEN_QUERY = `
