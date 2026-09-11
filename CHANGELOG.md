@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/gunter1020/issue-map/compare/v0.3.0...v0.3.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **fetch:** closed issue 改成指名抓，CLI 訊息改英文 ([540cacf](https://github.com/gunter1020/issue-map/commit/540cacf4fcf33378195709df654bc7f6b5306e5f))
+
 ## [0.3.0](https://github.com/gunter1020/issue-map/compare/v0.2.0...v0.3.0) (2026-09-11)
 
 
