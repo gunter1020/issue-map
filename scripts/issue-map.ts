@@ -42,7 +42,7 @@ const TEMPLATE = new URL('./issue-map.html', import.meta.url).pathname
 const CLIENT = new URL('./issue-map-page.ts', import.meta.url).pathname
 const OUTPUT = process.argv[2] ?? 'dist/issue-map.html'
 
-/** 一次查得回來的上限。GraphQL 的 `first` 最多就是 100，超過會少票，所以超過就喊。 */
+/** 一頁的張數。GraphQL 的 `first` 最多就是 100，票再多就靠 cursor 一頁一頁接。 */
 const PAGE = 100
 
 function labelList(raw: string | undefined, fallback: string): readonly string[] {
@@ -96,16 +96,27 @@ type RawIssue = {
 /** 一路帶著算好的 parent，免得同一段內文被 regex 掃好幾次。 */
 type Issue = RawIssue & { readonly parentNumber: number | null }
 
+/** 查詢裡的兩條線：各自有自己的 cursor，先抓完的那條就不再問。 */
+type Part = 'open' | 'closed'
+const PARTS = { open: 'OPEN', closed: 'CLOSED' } as const satisfies Record<Part, IssueState>
+
 interface Connection {
-  pageInfo: { hasNextPage: boolean }
+  pageInfo: { hasNextPage: boolean; endCursor: string | null }
   nodes: RawIssue[]
 }
+/** 已經抓完的那條線不在查詢裡，回來的物件就沒有那個欄位——所以是 `Partial`。 */
 interface QueryResult {
-  repository: { nameWithOwner: string } & Record<'open' | 'closed', Connection>
+  repository: { nameWithOwner: string } & Partial<Record<Part, Connection>>
+}
+
+interface Issues {
+  readonly nameWithOwner: string
+  readonly open: readonly RawIssue[]
+  readonly closed: readonly RawIssue[]
 }
 
 const FIELDS = `
-  pageInfo { hasNextPage }
+  pageInfo { hasNextPage endCursor }
   nodes {
     number title state url body closedAt
     author { login }
@@ -116,30 +127,82 @@ const FIELDS = `
   }
 `
 
-/** 一次問完 repo 名字與兩種狀態的 issue，只開一個 `gh` 行程。 */
-const QUERY = `
-  query($owner: String!, $repo: String!) {
+/**
+ * 一次問完 repo 名字與還沒抓完的那幾條線，一頁只開一個 `gh` 行程。
+ *
+ * 查詢是組出來的而不是常數，因為先抓完的那條線要從查詢裡拿掉——不然每多一頁就得替它多要一次
+ * 空的結果。cursor 走變數（`$openAfter`／`$closedAfter`）不內嵌字串。
+ */
+function queryFor(pending: readonly Part[]): string {
+  const variables = pending.map((part) => `, $${part}After: String`).join('')
+  const connections = pending
+    .map(
+      (part) =>
+        `${part}: issues(states: ${PARTS[part]}, first: ${PAGE}, after: $${part}After, orderBy: { field: CREATED_AT, direction: DESC }) { ${FIELDS} }`,
+    )
+    .join('\n      ')
+  return `
+  query($owner: String!, $repo: String!${variables}) {
     repository(owner: $owner, name: $repo) {
       nameWithOwner
-      open: issues(states: OPEN, first: ${PAGE}, orderBy: { field: CREATED_AT, direction: DESC }) { ${FIELDS} }
-      closed: issues(states: CLOSED, first: ${PAGE}, orderBy: { field: CREATED_AT, direction: DESC }) { ${FIELDS} }
+      ${connections}
     }
   }`
+}
 
-function query(): QueryResult['repository'] {
+function fetchPage(
+  pending: readonly Part[],
+  cursors: Partial<Record<Part, string>>,
+): QueryResult['repository'] {
   // `{owner}`／`{repo}` 由 gh 從 cwd 的 git 推斷，`GH_REPO` 可以蓋過去。
-  const result = spawnSync(
-    ['gh', 'api', 'graphql', '-f', `query=${QUERY}`, '-F', 'owner={owner}', '-F', 'repo={repo}'],
-    { stdout: 'pipe', stderr: 'pipe' },
-  )
+  const args = [
+    'gh',
+    'api',
+    'graphql',
+    '-f',
+    `query=${queryFor(pending)}`,
+    '-F',
+    'owner={owner}',
+    '-F',
+    'repo={repo}',
+  ]
+  // 第一頁沒有 cursor，變數就不帶——GraphQL 把缺席的 nullable 變數當 null，也就是從頭抓。
+  for (const part of pending) {
+    const cursor = cursors[part]
+    if (cursor) args.push('-f', `${part}After=${cursor}`)
+  }
+  const result = spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
   if (result.exitCode !== 0) throw new Error(`gh api graphql 失敗：${result.stderr.toString()}`)
   const parsed = JSON.parse(result.stdout.toString()) as { data: QueryResult; errors?: unknown }
   if (parsed.errors) throw new Error(`GraphQL 錯誤：${JSON.stringify(parsed.errors)}`)
-  const repository = parsed.data.repository
-  if (repository.open.pageInfo.hasNextPage) {
-    throw new Error(`open issue 超過 ${PAGE} 張，這支要改成分頁抓`)
+  return parsed.data.repository
+}
+
+/**
+ * 兩種狀態各自帶著 cursor 抓到底。
+ *
+ * closed 也是整包抓：要留下哪幾張 closed 是由 open 票牽出來的（阻擋者、parent、同組兄弟），
+ * 不是由時間決定，只抓最新一頁會讓老票的阻擋者悄悄消失。
+ */
+function query(): Issues {
+  const nodes: Record<Part, RawIssue[]> = { open: [], closed: [] }
+  const cursors: Partial<Record<Part, string>> = {}
+  let pending: Part[] = ['open', 'closed']
+  let nameWithOwner = ''
+  while (pending.length) {
+    const repository = fetchPage(pending, cursors)
+    nameWithOwner = repository.nameWithOwner
+    pending = pending.filter((part) => {
+      const connection = repository[part]
+      if (!connection) return false
+      nodes[part].push(...connection.nodes)
+      const { hasNextPage, endCursor } = connection.pageInfo
+      if (!hasNextPage || !endCursor) return false
+      cursors[part] = endCursor
+      return true
+    })
   }
-  return repository
+  return { nameWithOwner, open: nodes.open, closed: nodes.closed }
 }
 
 /** 原生 sub-issue 優先；沒有就讀內文的 `## <標題>` 之後第一個 `#<n>`。 */
@@ -151,8 +214,8 @@ function withParent(raw: RawIssue): Issue {
 
 export function takeSnapshot(): Snapshot {
   const repository = query()
-  const open = repository.open.nodes.map(withParent)
-  const closed = repository.closed.nodes.map(withParent)
+  const open = repository.open.map(withParent)
+  const closed = repository.closed.map(withParent)
 
   const openNumbers = new Set(open.map((issue) => issue.number))
   const openParents = new Set(open.map((issue) => issue.parentNumber).filter(isNumber))

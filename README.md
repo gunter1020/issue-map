@@ -113,9 +113,9 @@ Two worth thinking through:
 
 - `gh api graphql 失敗：…` — `gh` is not logged in, or your cwd is not inside the target repo's git
   tree.
-- `open issue 超過 100 張，這支要改成分頁抓` — 100 is the hard cap on GraphQL's `first`. Supporting
-  more issues means adding pagination to `query()` in `issue-map.ts`; that is a code change, not
-  configuration.
+
+There is no issue-count limit: `query()` pages through both open and closed issues 100 at a time
+(GraphQL's hard cap on `first`), so a large repo just costs more `gh` calls per snapshot.
 
 (CLI messages are in Chinese, so they are quoted here as they actually appear.)
 

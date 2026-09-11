@@ -95,7 +95,8 @@ CLI 那一侧（产文件消息、错误）刻意留中文：那是给开发者�
 ## 常见失败
 
 - `gh api graphql 失敗：…` — `gh` 没登录，或 cwd 不在目标 repo 的 git 树里。
-- `open issue 超過 100 張，這支要改成分頁抓` — GraphQL 的 `first` 上限就是 100。要支持更多票得在 `issue-map.ts` 的 `query()` 加分页；这是要改程序，不是配置。
+
+票数没有上限：`query()` 会一页 100 张（GraphQL `first` 的上限）把 open 与 closed 都翻到底，票多只是每次快照多开几次 `gh`。
 
 （CLI 消息是繁体中文，所以这里照它实际印出来的样子引用。）
 
