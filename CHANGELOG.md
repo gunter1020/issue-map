@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/gunter1020/issue-map/compare/v0.2.0...v0.3.0) (2026-09-11)
+
+
+### Features
+
+* **ui:** 網頁加上 i18n，預設英文並支援繁中、簡中、日文 ([6adc776](https://github.com/gunter1020/issue-map/commit/6adc776b8379bf2b70ee7bd721ecb104d4247b86))
+
 ## [0.2.0](https://github.com/gunter1020/issue-map/compare/v0.1.0...v0.2.0) (2026-09-10)
 
 
