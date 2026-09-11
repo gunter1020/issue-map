@@ -3,8 +3,8 @@
  *
  * **為什麼手寫而不是用 Stryker。** Stryker 的 runner 清單是 jasmine／jest／karma／mocha／tap／
  * vitest／cucumber／command——沒有 bun。只能走 command runner，而它對**每一個 mutant 重跑全部
- * 測試**。這支限定範圍到單一檔案並只跑指定的測試檔，幾分鐘就跑完。（這支跟著開發地圖從
- * trpg-keeper 搬過來，那邊的規模是全套 29 秒、src 一萬行，用 Stryker 估要十幾小時。）
+ * 測試**。這支限定範圍到單一檔案並只跑指定的測試檔，幾分鐘就跑完。（這支跟著開發地圖從原本
+ * 的專案搬過來，那邊的規模是全套 29 秒、src 一萬行，用 Stryker 估要十幾小時。）
  *
  * 它回答兩個問題，第二個是 `--coverage` 答不出來的：
  *   1. **突變分數**——改壞了有沒有人抓到。存活的 mutant 就是覆蓋率數字騙人的地方。

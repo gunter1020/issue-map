@@ -20,7 +20,7 @@
 ### Features
 
 * server 起來就開瀏覽器，watch 模式關掉 ([4bb025e](https://github.com/gunter1020/issue-map/commit/4bb025e9b7a6b3cb886dc9affc5def453093745d))
-* 從 trpg-keeper 搬出開發地圖成獨立工具 ([2e8a426](https://github.com/gunter1020/issue-map/commit/2e8a4262ad63b486954eb4868a0c557056f2ffcf))
+* 把開發地圖搬出來成獨立工具 ([2e8a426](https://github.com/gunter1020/issue-map/commit/2e8a4262ad63b486954eb4868a0c557056f2ffcf))
 
 
 ### Bug Fixes

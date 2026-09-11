@@ -13,7 +13,7 @@ import { layoutOf, MAP, type MapIssue } from '../scripts/issue-map-model.ts'
  * ——那幾支都在讀層級算出來的位置。
  *
  * （搬到這個 repo 之後重跑過一次：12／12 不變，平均從 1.9 變 1.8，因為「全套」現在只有這兩支
- * 測試檔，不再包含 trpg-keeper 其餘的測試。）
+ * 測試檔，不再包含原本專案其餘的測試。）
  */
 
 function issue(number: number, blockedBy: number[] = []): MapIssue {
