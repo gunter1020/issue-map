@@ -15,13 +15,16 @@
     "url": "git+https://github.com/gunter1020/issue-map.git"
   },
   "bin": {
-    "issue-map": "./scripts/issue-map-serve.ts",
-    "issue-map-build": "./scripts/issue-map.ts"
+    "issue-map": "./scripts/issue-map-serve-bin.mjs",
+    "issue-map-build": "./scripts/issue-map-build-bin.mjs"
   },
   "files": [
     "README.zh-TW.md",
     "README.zh-CN.md",
     "README.ja.md",
+    "scripts/issue-map-bin.mjs",
+    "scripts/issue-map-serve-bin.mjs",
+    "scripts/issue-map-build-bin.mjs",
     "scripts/issue-map.ts",
     "scripts/issue-map-i18n.ts",
     "scripts/issue-map-model.ts",

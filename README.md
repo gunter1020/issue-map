@@ -41,6 +41,8 @@ as a skill, let the agent run it — which is where the default labels and comma
 ## Requirements
 
 - **Bun** — these scripts use `Bun.build`, `Bun.serve` and `Bun.file`; Node will not run them.
+  `npx issue-map` works too, as long as Bun is installed — the bins are Node entry points that hand
+  the work to Bun, and say so if it is missing.
 - **`gh` CLI, logged in**, with read access to the target repo.
 - A git remote pointing at GitHub.
 

@@ -42,7 +42,9 @@ Agent は 1 ラウンドに 1 枚しか扱えないので、毎ラウンド実�
 
 ## 前提条件
 
-- **Bun**——`Bun.build`、`Bun.serve`、`Bun.file` を使っているので、Node では動きません。
+- **Bun**——`Bun.build`、`Bun.serve`、`Bun.file` を使っているので、Node では動きません。Bun さえ
+  入っていれば `npx issue-map` でも動きます。bin は Node のエントリーポイントで、処理を Bun に
+  渡し、見つからなければその旨を伝えます。
 - **`gh` CLI にログイン済み**で、対象 repo への読み取り権限があること。
 - 対象 repo に GitHub を指す git remote があること。
 

@@ -9,6 +9,10 @@
     "moduleResolution": "bundler",
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,
+    // bin wrapper 是 `.mjs`（要讓 node 直接跑），但不因此變成沒人檢查的角落：這兩個開關讓
+    // `tsc --noEmit` 連同它們的 JSDoc 一起檢查，不必在每個檔頂端再寫一次 `// @ts-check`。
+    "allowJs": true,
+    "checkJs": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "strict": true,
@@ -22,5 +26,5 @@
     "types": ["bun"]
   },
   // 測試也納入檢查：量測工具出錯比出貨程式出錯更難發現，因為錯的是「用來判斷對錯的那把尺」。
-  "include": ["scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["scripts/**/*.ts", "scripts/**/*.mjs", "tests/**/*.ts"]
 }

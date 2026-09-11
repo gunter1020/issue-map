@@ -39,7 +39,8 @@ skill、讓 agent 照著跑——預設的標籤與指令也是從那裡來的�
 
 ## 前置條件
 
-- **Bun**——這幾支用了 `Bun.build`、`Bun.serve`、`Bun.file`，Node 跑不起來。
+- **Bun**——這幾支用了 `Bun.build`、`Bun.serve`、`Bun.file`，Node 跑不起來。`npx issue-map` 一樣
+  可以用，只要裝了 Bun：bin 是 Node 進入點，工作轉給 Bun，沒裝就直接告訴你。
 - **`gh` CLI 已登入**，而且對目標 repo 有讀取權。
 - 目標 repo 有 git remote 指向 GitHub。
 
