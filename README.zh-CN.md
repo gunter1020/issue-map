@@ -91,7 +91,7 @@ CLI 那一侧（产文件消息、错误）只有英文，也不跟着页面的�
 
 - **标签词汇**：目标 repo 没在用这套标签就要换成它自己的名字。程序会侦测——快照里完全没出现 ready／unready 任何一个标签时，就不拿 triage 当闸门，否则每张票都会变成「待评估」。
 - **指令名**：`/implement`、`/triage` 是 Claude Code 的 skill。目标 repo 没有的话一定要换掉，不然图上会叫人跑不存在的东西。
-- **已完成的兄弟票要靠原生 sub-issue**：地图只跟 GitHub 要 open 票还牵着的 closed 票——它的阻挡者、它的 parent，以及那个 parent 底下的子票。子票是从 GitHub 原生的 sub-issue 关系拿的，所以用 `## Parent` 正文惯例的 repo 看不到一组里**已完成**的子票，那一组的进度会比实际少。open 票不受影响。另一条路是整包扫过 repo 里所有 closed 票，而那在老 repo 上是几十次请求换个位数张票。
+- **已完成的兄弟票要靠原生 sub-issue**：地图只跟 GitHub 要 open 票还牵着的 closed 票——它的阻挡者、它的 parent，以及那个 parent 底下的子票。子票是从 GitHub 原生的 sub-issue 关系拿的，所以用 `## Parent` 正文惯例的 repo 看不到一组里**已完成**的子票，那一组的进度会比实际少。open 票不受影响。另一条路是整包扫过 repo 里所有 closed 票，而那在老 repo 上是几十次请求换个位数张票。一组票如果是原生 sub-issue 之前开的，把子票关联上去一次（票页的 Sub-issues）就会回来；正文惯例可以留着，原生的本来就优先。
 
 ## 常见失败
 

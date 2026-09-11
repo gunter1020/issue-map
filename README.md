@@ -114,7 +114,9 @@ Three worth thinking through:
   from GitHub's native sub-issue relation, so with the `## Parent` body convention a group's
   _closed_ children never appear and its progress looks smaller than it is. Open issues are not
   affected. The alternative is scanning every closed issue in the repo, which on an old repo means
-  dozens of requests to find a handful of issues.
+  dozens of requests to find a handful of issues. If a group predates native sub-issues, linking
+  its children once (the issue's Sub-issues panel) brings the closed ones back; the body convention
+  can stay, the native relation wins anyway.
 
 ## When it fails
 
