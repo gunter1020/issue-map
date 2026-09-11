@@ -1,6 +1,6 @@
 {
   "name": "issue-map",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Draws the blocking relationships between your GitHub Issues as a one-page dev map: which issues can be picked up now, which are waiting on what, and where the critical path runs.",
   "keywords": [
     "bun",
