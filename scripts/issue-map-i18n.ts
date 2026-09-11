@@ -100,6 +100,8 @@ const EN = {
   'group.linkedSub': 'linked by prerequisites, but under no parent issue',
   'group.spec': '#{n} parent spec',
   'group.progress': 'sub-issues {done} / {total} done · parent closes only when all do',
+  'group.undrawn':
+    'Map not drawn — nothing here blocks anything. The issues are in the list below.',
 
   'status.ready': 'ready',
   'status.active': 'in progress',
@@ -199,6 +201,7 @@ const ZH_TW: Messages = {
   'group.linkedSub': '有前置關係，但不屬於任何母票',
   'group.spec': '#{n} 母票規格',
   'group.progress': '子票 {done} / {total} 已完成 · 全關後才關 parent',
+  'group.undrawn': '沒有畫圖——這一組裡沒有任何阻擋關係。票在下方清單。',
 
   'status.ready': '可接手',
   'status.active': '進行中',
@@ -288,6 +291,7 @@ const ZH_CN: Messages = {
   'group.linkedSub': '有前置关系，但不属于任何母票',
   'group.spec': '#{n} 母票规格',
   'group.progress': '子票 {done} / {total} 已完成 · 全关后才关 parent',
+  'group.undrawn': '没有画图——这一组里没有任何阻挡关系。票在下方清单。',
 
   'status.ready': '可接手',
   'status.active': '进行中',
@@ -381,6 +385,8 @@ const JA: Messages = {
   'group.linkedSub': '依存関係はあるが、親チケットには属さない',
   'group.spec': '#{n} 親チケットの仕様',
   'group.progress': 'サブチケット {done} / {total} 完了 · すべて閉じてから親を閉じる',
+  'group.undrawn':
+    '図は描いていません——このグループにはブロック関係がありません。チケットは下の一覧にあります。',
 
   'status.ready': '着手可',
   'status.active': '対応中',

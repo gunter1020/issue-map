@@ -45,6 +45,15 @@ const BLOCKERS_SHOWN = 4
 
 const TRACK_COLOURS = ['--t1', '--t2', '--t3', '--t4']
 
+/**
+ * 最多畫幾張圖。
+ *
+ * 一組沒有阻擋關係的票畫出來只是一片點陣，而 `grafana/grafana` 那種規模是 108 組裡 103 組都
+ * 這樣——那 103 張點陣沒有人會讀，卻佔掉產出的 2MB。有線路的一定畫，其餘補到這個數為止，剩下
+ * 的只留標頭。票照樣在下面的清單裡，一張都不會少。
+ */
+const MAX_MAPS = 20
+
 /** 一群票對應的一張圖。`members` 是票，`track` 是這一組的線色。 */
 export type Shown = { group: Group; members: readonly MapIssue[]; track: string }
 
@@ -428,23 +437,40 @@ export function viewOf(snapshot: Partial<Snapshot>) {
       track: `var(${TRACK_COLOURS[index % TRACK_COLOURS.length]})`,
     }))
 
-  const groupsHTML = (): string =>
-    shownGroups()
+  /** 這一組裡有沒有票互相擋著。沒有的話畫出來只是一片點陣，不是線路圖。 */
+  const hasRails = (shown: Shown): boolean => {
+    const inGroup = new Set(shown.members.map((m) => m.number))
+    return shown.members.some((m) => m.blockedBy.some((n) => inGroup.has(n)))
+  }
+
+  const groupsHTML = (): string => {
+    const groups = shownGroups()
+    // 有線路的一定畫；其餘照原順序補到上限。剩下的只留標頭，票照樣在下面的清單裡。
+    const drawn = new Set(groups.filter(hasRails))
+    for (const shown of groups) {
+      if (drawn.size >= MAX_MAPS) break
+      drawn.add(shown)
+    }
+    return groups
       .map((shown) => {
         const parent = shown.group.parent
         const fold = parent === null ? '' : foldButtonHTML(parent)
         const attrs = parent === null ? '' : ` data-fold="${parent}"`
         const bodyAttrs = parent === null ? '' : ` data-parent="${parent}"`
+        const body = drawn.has(shown)
+          ? mapHTML(shown).replace('class="map-wrap"', `class="map-wrap"${bodyAttrs}`) +
+            mapKeyHTML()
+          : `<p class="undrawn"${bodyAttrs}>${esc(t('group.undrawn'))}</p>`
         return (
           `<section class="group" style="--track:${shown.track}"${attrs}>` +
           `<div class="group-head">${fold}<h2>${esc(groupTitle(shown.group))}</h2>` +
           `<span class="sub">${groupSub(shown)}</span></div>` +
-          mapHTML({ ...shown }).replace('class="map-wrap"', `class="map-wrap"${bodyAttrs}`) +
-          mapKeyHTML() +
+          body +
           '</section>'
         )
       })
       .join('')
+  }
 
   // ---- 詳細 ----
 

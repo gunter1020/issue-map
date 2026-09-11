@@ -577,3 +577,67 @@ describe('預設看哪一張', () => {
     expect(viewOf(snapshotOf(issues)).defaultPick()).toBe(5)
   })
 })
+
+describe('圖的張數上限', () => {
+  type Grp = Snapshot['groups'][number]
+  const platform = (base: number): Grp => ({
+    parent: base,
+    name: { kind: 'spec', title: `主票 ${base}` },
+    members: [base + 1, base + 2],
+  })
+
+  /**
+   * 守的是「沒有阻擋關係的組別超過上限就不畫圖」。
+   *
+   * 壞了會怎樣：實際踩到過——`grafana/grafana` 有 108 組，其中 103 組完全沒有阻擋關係。那 103
+   * 張點陣沒有人會讀，卻讓產出變成 5.3MB、DOM 六萬個節點，瀏覽器連截圖都逾時。
+   */
+  test('超過上限的無線路組別只留標頭', () => {
+    const issues: MapIssue[] = []
+    const groups: Grp[] = []
+    for (let i = 0; i < 30; i += 1) {
+      const base = i * 10 + 100
+      issues.push(issue(base, { isParent: true }))
+      issues.push(issue(base + 1, { parent: base }))
+      issues.push(issue(base + 2, { parent: base }))
+      groups.push(platform(base))
+    }
+    const html = viewOf(snapshotOf(issues, groups)).groupsHTML()
+
+    // 30 組全部都有標頭。
+    expect(html.match(/<section class="group"/g)?.length).toBe(30)
+    // 但只畫 20 張圖，其餘給一句說明。
+    expect(html.match(/class="map-wrap"/g)?.length).toBe(20)
+    expect(html.match(/class="undrawn"/g)?.length).toBe(10)
+  })
+
+  /**
+   * 守的是「有線路的組別一定畫，不會被上限擠掉」。
+   *
+   * 壞了會怎樣：線路圖是這個工具唯一畫得出「誰擋著誰」的地方。被一堆點陣佔滿名額而擠掉，就等於
+   * 把最有價值的那幾張丟了。
+   */
+  test('有阻擋關係的組別排在名額前面', () => {
+    const issues: MapIssue[] = []
+    const groups: Grp[] = []
+    // 先放 25 組沒有線路的，最後才放一組有線路的。
+    for (let i = 0; i < 25; i += 1) {
+      const base = i * 10 + 100
+      issues.push(issue(base, { isParent: true }))
+      issues.push(issue(base + 1, { parent: base }))
+      issues.push(issue(base + 2, { parent: base }))
+      groups.push(platform(base))
+    }
+    issues.push(issue(900, { isParent: true }))
+    issues.push(issue(901, { parent: 900 }))
+    issues.push(issue(902, { parent: 900, blockedBy: [901], waitingFor: [901], status: 'blocked' }))
+    groups.push({ parent: 900, name: { kind: 'spec', title: '有線路' }, members: [901, 902] })
+
+    const html = viewOf(snapshotOf(issues, groups)).groupsHTML()
+    const last = html.slice(html.lastIndexOf('<section class="group"'))
+
+    expect(last).toContain('class="map-wrap"')
+    expect(last).not.toContain('class="undrawn"')
+    expect(last).toContain('class="edge"')
+  })
+})
