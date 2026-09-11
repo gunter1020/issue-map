@@ -4,6 +4,18 @@
 
 狀態的權威永遠是 GitHub Issues。這一頁只是快照，頁面上不能改狀態——所以不會長出第二個事實來源。
 
+## 為什麼有這個專案
+
+起點是 [mattpocock/skills](https://github.com/mattpocock/skills)。團隊照它那套「把工作流寫成
+skill、讓 agent 照著跑」開始做事之後，開票變得很便宜：想到一件事就開一張票，交給 skill 去接。
+票因此長得很快——那是流程在運作的證據，不是問題。
+
+問題在下一步。Agent 一輪吃一張票，所以每一輪真正要決定的是**派哪一張**，而這個答案不在任何
+單一張票裡，它在票與票之間：誰擋著誰、哪一組子票還差幾張、最長的那條鏈有多長。GitHub Issues
+一次只讓你讀一張票，要湊出那張圖就得一張一張點開來，而且每天都要重湊一次。
+
+這一頁就是那張圖。
+
 ## 用法
 
 在**要看的那個 repo** 裡跑：
@@ -26,6 +38,26 @@ bunx -p issue-map@latest issue-map-build out.html
 ```
 
 快照就是快照——狀態會過期，要看現在的狀態就用上面的 server。
+
+## 語言
+
+頁面右上角切換，**預設英文**，另外支援繁體中文、簡體中文、日文。選了哪一種記在瀏覽器
+（localStorage 的 `issue-map:locale`），跟 repo 無關——語言是看的人的偏好，不是某個專案的設定。
+刻意不看 `navigator.language`：預設就是英文，猜錯了反而每次進來都要改回去。
+
+文案全部在 `scripts/issue-map-i18n.ts`，那是頁面上每一句話的唯一來源：
+
+- `EN` 是原稿，也是鍵的定義處。三份翻譯的型別由它推導，少翻一個鍵 `bun run typecheck` 就會紅。
+- 句子裡的代入名（`{n}`、`{issues}`）也是型別的一部分，少傳一個編不過——不然缺的那個會以
+  `{n}` 的樣子印在畫面上，而那要真的跑到那一格才看得到。
+- 英文要分單複數的鍵寫成 `{ one, other }`，中日文寫一句字串就好（`Intl.PluralRules` 對這幾種
+  語言只有 `other`）。
+
+模型與抓取那一側**不再算好句子**：`nextStep` 是 `{ kind: 'waitChildren', count: 2 }` 這種結構化
+的值，分組名字也一樣，話在 i18n 那一層才組出來。快照裡存中文句子的話，換一次語言就得重抓一次
+GitHub。
+
+CLI 那一側（產檔訊息、錯誤）刻意留中文：那是給開發者看的，不是頁面的一部分。
 
 ## 前置條件
 
@@ -67,6 +99,7 @@ bunx -p issue-map@latest issue-map-build out.html
 | ---------------------------- | ---------------------------------------------------------------------- |
 | `scripts/issue-map.ts`       | 抓快照、算每張票的狀態與下一步、產出 HTML。移植設定在裡面的 `CONFIG`   |
 | `scripts/issue-map-model.ts` | 純資料模型：分組、關鍵路徑。前後端共用                                 |
+| `scripts/issue-map-i18n.ts`  | 四種語言的文案與查表。頁面上每一句話的唯一來源                         |
 | `scripts/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                                    |
 | `scripts/issue-map.html`     | 樣板。兩個佔位區塊（`issue-map-data`、`issue-map-code`）會被填入       |
 | `scripts/issue-map-serve.ts` | 本機 server，每個請求重抓一次                                          |
