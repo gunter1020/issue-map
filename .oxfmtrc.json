@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  // 四項都跟原生地的 trpg-keeper 一致：這幾支原始碼是在那個設定下排版的，換一套就會整批改動。
+  // 四項沿用搬過來時的原設定：這幾支原始碼是在那個設定下排版的，換一套就會整批改動。
   "semi": false,
   "singleQuote": true,
   "printWidth": 100,

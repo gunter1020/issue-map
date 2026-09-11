@@ -30,7 +30,7 @@ bunx issue-map@latest
 
 `@latest` 取 npm 上最新的一版；要钉住特定版本就写 `bunx issue-map@0.2.0`。
 
-起在 `http://localhost:4747` **并直接开浏览器**。每次刷新都重抓 GitHub，看到的一定是现在的状态。repo 是 `gh` 从 cwd 的 git 推断的，不必填。
+起在 OS 给的一个空端口 **并直接开浏览器**；启动信息会印出正在画的目录与网址，所以好几个 repo 同时跑也不会撞。要固定端口就设 `ISSUE_MAP_PORT`，那个是严格的——被占住时直接失败，不会偷偷换一个。每次刷新都重抓 GitHub，看到的一定是现在的状态。repo 是 `gh` 从 cwd 的 git 推断的，不必填。
 
 不要自动开标签页就设 `ISSUE_MAP_OPEN=0`。
 
@@ -84,7 +84,7 @@ CLI 那一侧（产文件消息、错误）只有英文，也不跟着页面的�
 | `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | 这些要人做，下一步不写实作指令                                                                             |
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 可以动工时图上叫人跑的指令                                                                                 |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | 还要评估时图上叫人跑的指令                                                                                 |
-| `ISSUE_MAP_PORT`           | `4747`                            | server 的端口                                                                                              |
+| `ISSUE_MAP_PORT`           | OS 指派的空端口                   | server 的端口                                                                                              |
 | `ISSUE_MAP_OPEN`           | 开                                | 设 `0` 就不自动开浏览器（`bun --watch` 的开发模式默认关掉）                                                |
 
 三个要特别想过的：
