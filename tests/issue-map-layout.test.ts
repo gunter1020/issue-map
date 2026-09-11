@@ -97,3 +97,44 @@ describe('線路圖排版', () => {
     }
   })
 })
+
+describe('月台的形狀', () => {
+  /**
+   * 守的是「月台排成接近正方形，不會變成一條直條」。
+   *
+   * 壞了會怎樣：實際踩到過——一個完全沒有阻擋關係的 repo（482 張票）每列只排 4 站，圖高
+   * 8738px，整頁 36000px。那已經不是地圖，是一份很難捲的清單。每列張數只跟著鏈的深度走，
+   * 沒跟著月台本身的規模走就會這樣。
+   */
+  test('票多的時候每列站數跟著增加', () => {
+    const many = Array.from({ length: 100 }, (_, i) => issue(i + 1))
+    const layout = layoutOf(many)
+
+    const rows = new Set([...layout.xy.values()].map((p) => p.y)).size
+    const cols = new Set([...layout.xy.values()].map((p) => p.x)).size
+
+    expect(cols).toBeGreaterThan(4)
+    // 100 張排成 10×10 上下，不該是 25 列。
+    expect(rows).toBeLessThan(15)
+  })
+
+  /**
+   * 守的是「再多也不會無限往右長」。
+   *
+   * 壞了會怎樣：一列排到幾十站，畫布寬到橫向要捲很遠——而月台上的左右位置本來就不帶意義。
+   */
+  test('每列站數有上限', () => {
+    const lots = Array.from({ length: 500 }, (_, i) => issue(i + 1))
+    const layout = layoutOf(lots)
+
+    const cols = new Set([...layout.xy.values()].map((p) => p.x)).size
+    expect(cols).toBeLessThanOrEqual(12)
+  })
+
+  /** 票很少時不要排成細細一條。 */
+  test('票少時每列至少四站', () => {
+    const few = [1, 2, 3, 4].map((n) => issue(n))
+    const layout = layoutOf(few)
+    expect(new Set([...layout.xy.values()].map((p) => p.y)).size).toBe(1)
+  })
+})
