@@ -11,6 +11,10 @@
  * 帶進快照的 issue：所有 open issue，加上仍被 open issue 牽著的 closed issue。後者畫成「已完成」
  * 的節點讓進度看得見，沒人牽著之後自然消失。
  *
+ * closed 是**指名**去要的（阻擋者、parent、parent 底下的子票），不掃整包——老 repo 幾千張
+ * closed 裡通常只有個位數會留下。代價：同一組裡已完成的兄弟票要靠 GitHub 原生 sub-issue 才
+ * 抽得到，用內文 `## Parent` 慣例的 repo 看不到它們，那一組的進度會比實際少。
+ *
  * **要畫哪個 repo**：從 cwd 的 git 推斷，不必填——在那個 repo 裡跑 `bunx issue-map@latest`
  * 就好。要指定別的 repo 設 `GH_REPO`。標籤字彙與 parent 的慣例都能用環境變數調，見底下的
  * `CONFIG`，整份對照表在 README。
@@ -42,8 +46,10 @@ const TEMPLATE = new URL('./issue-map.html', import.meta.url).pathname
 const CLIENT = new URL('./issue-map-page.ts', import.meta.url).pathname
 const OUTPUT = process.argv[2] ?? 'dist/issue-map.html'
 
-/** 一次查得回來的上限。GraphQL 的 `first` 最多就是 100，超過會少票，所以超過就喊。 */
+/** 一頁的張數。GraphQL 的 `first` 最多就是 100，票再多就靠 cursor 一頁一頁接。 */
 const PAGE = 100
+/** 一次用 alias 指名幾張票。GraphQL 對單一查詢的節點數有上限，這個量級離它還很遠。 */
+const BATCH = 50
 
 function labelList(raw: string | undefined, fallback: string): readonly string[] {
   return (raw ?? fallback)
@@ -96,50 +102,163 @@ type RawIssue = {
 /** 一路帶著算好的 parent，免得同一段內文被 regex 掃好幾次。 */
 type Issue = RawIssue & { readonly parentNumber: number | null }
 
-interface Connection {
-  pageInfo: { hasNextPage: boolean }
-  nodes: RawIssue[]
-}
-interface QueryResult {
-  repository: { nameWithOwner: string } & Record<'open' | 'closed', Connection>
+interface Page<T> {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null }
+  nodes: T[]
 }
 
-const FIELDS = `
-  pageInfo { hasNextPage }
-  nodes {
-    number title state url body closedAt
-    author { login }
-    parent { number }
-    labels(first: 20) { nodes { name } }
-    assignees(first: 10) { nodes { login } }
-    blockedBy(first: 50) { nodes { number } }
-  }
+/** 票號查不到（號碼其實是 PR，或那張票不存在）時 GraphQL 回 null。 */
+type MaybeIssue = RawIssue | null
+
+const ISSUE_FIELDS = `
+  number title state url body closedAt
+  author { login }
+  parent { number }
+  labels(first: 20) { nodes { name } }
+  assignees(first: 10) { nodes { login } }
+  blockedBy(first: 50) { nodes { number } }
 `
 
-/** 一次問完 repo 名字與兩種狀態的 issue，只開一個 `gh` 行程。 */
-const QUERY = `
-  query($owner: String!, $repo: String!) {
+/**
+ * 跑一次 `gh api graphql`。
+ *
+ * 票號是我們自己從前一次結果拿到的整數，直接組進查詢字串；只有 cursor 走變數——它是 API 給的
+ * 不透明字串，沒有理由自己去逃脫它。
+ */
+function run<T>(query: string, variables: Record<string, string> = {}): T {
+  // `{owner}`／`{repo}` 由 gh 從 cwd 的 git 推斷，`GH_REPO` 可以蓋過去。
+  const args = [
+    'gh',
+    'api',
+    'graphql',
+    '-f',
+    `query=${query}`,
+    '-F',
+    'owner={owner}',
+    '-F',
+    'repo={repo}',
+  ]
+  for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
+  const result = spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
+  if (result.exitCode !== 0) throw new Error(`gh api graphql failed: ${result.stderr.toString()}`)
+  const parsed = JSON.parse(result.stdout.toString()) as { data: T; errors?: unknown }
+  if (parsed.errors) throw new Error(`GraphQL errors: ${JSON.stringify(parsed.errors)}`)
+  return parsed.data
+}
+
+const OPEN_QUERY = `
+  query($owner: String!, $repo: String!, $after: String) {
     repository(owner: $owner, name: $repo) {
       nameWithOwner
-      open: issues(states: OPEN, first: ${PAGE}, orderBy: { field: CREATED_AT, direction: DESC }) { ${FIELDS} }
-      closed: issues(states: CLOSED, first: ${PAGE}, orderBy: { field: CREATED_AT, direction: DESC }) { ${FIELDS} }
+      issues(states: OPEN, first: ${PAGE}, after: $after, orderBy: { field: CREATED_AT, direction: DESC }) {
+        pageInfo { hasNextPage endCursor }
+        nodes { ${ISSUE_FIELDS} }
+      }
     }
   }`
 
-function query(): QueryResult['repository'] {
-  // `{owner}`／`{repo}` 由 gh 從 cwd 的 git 推斷，`GH_REPO` 可以蓋過去。
-  const result = spawnSync(
-    ['gh', 'api', 'graphql', '-f', `query=${QUERY}`, '-F', 'owner={owner}', '-F', 'repo={repo}'],
-    { stdout: 'pipe', stderr: 'pipe' },
-  )
-  if (result.exitCode !== 0) throw new Error(`gh api graphql 失敗：${result.stderr.toString()}`)
-  const parsed = JSON.parse(result.stdout.toString()) as { data: QueryResult; errors?: unknown }
-  if (parsed.errors) throw new Error(`GraphQL 錯誤：${JSON.stringify(parsed.errors)}`)
-  const repository = parsed.data.repository
-  if (repository.open.pageInfo.hasNextPage) {
-    throw new Error(`open issue 超過 ${PAGE} 張，這支要改成分頁抓`)
+/** open issue 全部都要，所以一路翻到底——票超過一頁不是錯誤，是常態。 */
+function fetchOpen(): { nameWithOwner: string; open: RawIssue[] } {
+  type Result = { repository: { nameWithOwner: string; issues: Page<RawIssue> } }
+  const open: RawIssue[] = []
+  let nameWithOwner = ''
+  let after: string | null = null
+  for (;;) {
+    const variables: Record<string, string> = after ? { after } : {}
+    const { repository } = run<Result>(OPEN_QUERY, variables)
+    nameWithOwner = repository.nameWithOwner
+    open.push(...repository.issues.nodes)
+    const { hasNextPage, endCursor } = repository.issues.pageInfo
+    if (!hasNextPage || !endCursor) break
+    after = endCursor
   }
-  return repository
+  return { nameWithOwner, open }
+}
+
+/** alias 不能以數字開頭，所以票號前面補一個 `i`。 */
+const alias = (number: number) => `i${number}`
+
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  const batches: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size))
+  }
+  return batches
+}
+
+/** 指名要哪幾張票，一批 alias 問完。查不到的就當沒有。 */
+function fetchByNumber(numbers: readonly number[]): RawIssue[] {
+  type Result = { repository: Record<string, MaybeIssue> }
+  const found: RawIssue[] = []
+  for (const batch of chunks(numbers, BATCH)) {
+    const query = `
+  query($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      ${batch.map((number) => `${alias(number)}: issue(number: ${number}) { ${ISSUE_FIELDS} }`).join('\n      ')}
+    }
+  }`
+    const { repository } = run<Result>(query)
+    for (const number of batch) {
+      const issue = repository[alias(number)]
+      if (issue) found.push(issue)
+    }
+  }
+  return found
+}
+
+function childrenQuery(parent: number): string {
+  return `
+  query($owner: String!, $repo: String!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: ${parent}) {
+        subIssues(first: ${PAGE}, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { ${ISSUE_FIELDS} }
+        }
+      }
+    }
+  }`
+}
+
+/**
+ * 拿這些 parent 底下的子票，為的是把同一組裡**已完成**的兄弟票撈出來當進度。
+ *
+ * 只有 GitHub 原生 sub-issue 有值。用內文 `## Parent` 慣例的 repo 這裡是空的，那些已完成的
+ * 兄弟票就不會出現在圖上——要把它們找回來只能整包掃 closed，而那對老 repo 是幾十次請求換
+ * 幾張票。open 的兄弟不必靠這裡，它們本來就在 open 那包。
+ */
+function fetchChildren(parents: readonly number[]): RawIssue[] {
+  type Batch = { repository: Record<string, { subIssues: Page<RawIssue> } | null> }
+  type More = { repository: { issue: { subIssues: Page<RawIssue> } | null } }
+  const children: RawIssue[] = []
+  for (const batch of chunks(parents, BATCH)) {
+    const query = `
+  query($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      ${batch
+        .map(
+          (number) => `${alias(number)}: issue(number: ${number}) {
+        subIssues(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { ${ISSUE_FIELDS} } } }`,
+        )
+        .join('\n      ')}
+    }
+  }`
+    const { repository } = run<Batch>(query)
+    for (const number of batch) {
+      const page = repository[alias(number)]?.subIssues
+      if (!page) continue
+      children.push(...page.nodes)
+      // 子票破百的 parent 很罕見，就讓它自己續抓，不為了它把整批都變成分頁查詢。
+      let after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
+      while (after) {
+        const next = run<More>(childrenQuery(number), { after }).repository.issue?.subIssues
+        if (!next) break
+        children.push(...next.nodes)
+        after = next.pageInfo.hasNextPage ? next.pageInfo.endCursor : null
+      }
+    }
+  }
+  return children
 }
 
 /** 原生 sub-issue 優先；沒有就讀內文的 `## <標題>` 之後第一個 `#<n>`。 */
@@ -150,9 +269,8 @@ function withParent(raw: RawIssue): Issue {
 }
 
 export function takeSnapshot(): Snapshot {
-  const repository = query()
-  const open = repository.open.nodes.map(withParent)
-  const closed = repository.closed.nodes.map(withParent)
+  const { nameWithOwner, open: rawOpen } = fetchOpen()
+  const open = rawOpen.map(withParent)
 
   const openNumbers = new Set(open.map((issue) => issue.number))
   const openParents = new Set(open.map((issue) => issue.parentNumber).filter(isNumber))
@@ -160,17 +278,17 @@ export function takeSnapshot(): Snapshot {
     open.flatMap((issue) => issue.blockedBy.nodes.map((blocker) => blocker.number)),
   )
 
-  // 只留 open issue 還牽著的 closed issue：當它們的阻擋者、當它們的 parent，或跟它們同一個
-  // parent（同一組子票的已完成進度）。沒人牽著之後自然從地圖消失。
-  const kept = [
-    ...open,
-    ...closed.filter(
-      (issue) =>
-        blockers.has(issue.number) ||
-        openParents.has(issue.number) ||
-        (issue.parentNumber !== null && openParents.has(issue.parentNumber)),
-    ),
-  ]
+  // 進圖的 closed issue 只有 open issue 還牽著的那些：它們的阻擋者、它們的 parent，以及同一個
+  // parent 底下已完成的兄弟（那一組的進度）。所以不掃整包 closed，而是指名去要——老 repo 的
+  // 幾千張 closed 裡通常只有個位數會留下，翻完它們是拿幾十次請求換幾張票。
+  const referenced = [...new Set([...blockers, ...openParents])].filter(
+    (number) => !openNumbers.has(number),
+  )
+  const closed = dedupe([...fetchByNumber(referenced), ...fetchChildren([...openParents])])
+    .filter((issue) => issue.state === 'CLOSED' && !openNumbers.has(issue.number))
+    .map(withParent)
+
+  const kept = [...open, ...closed]
   const parents = new Set(kept.map((issue) => issue.parentNumber).filter(isNumber))
   const openChildren = new Map<number, number>()
   for (const issue of kept) {
@@ -187,12 +305,17 @@ export function takeSnapshot(): Snapshot {
     .toSorted((a, b) => a.number - b.number)
   return {
     generatedAt: new Date().toISOString(),
-    repo: repository.nameWithOwner,
+    repo: nameWithOwner,
     labels: { ready: CONFIG.ready, unready: CONFIG.unready },
     groups: groupsOf(issues),
     criticalPath: criticalPathOf(issues),
     issues,
   }
+}
+
+/** 同一張票可能同時是某人的阻擋者又是某人的兄弟，用票號收斂成一張。 */
+function dedupe(issues: readonly RawIssue[]): RawIssue[] {
+  return [...new Map(issues.map((issue) => [issue.number, issue])).values()]
 }
 
 function isNumber(value: number | null): value is number {
@@ -281,9 +404,9 @@ async function bundleClient(): Promise<string> {
     format: 'iife',
     minify: false,
   })
-  if (!built.success) throw new Error(`打包 ${CLIENT} 失敗：${built.logs.join('\n')}`)
+  if (!built.success) throw new Error(`Failed to bundle ${CLIENT}: ${built.logs.join('\n')}`)
   const [output] = built.outputs
-  if (!output) throw new Error(`打包 ${CLIENT} 沒有產出`)
+  if (!output) throw new Error(`Bundling ${CLIENT} produced no output`)
   return output.text()
 }
 
@@ -307,17 +430,17 @@ export async function renderFragment(snapshot: Snapshot): Promise<string> {
 
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
   const next = html.replace(marker, `$1${body}$2`)
-  if (next === html) throw new Error(`樣板缺少 ${what} 區塊：${TEMPLATE}`)
+  if (next === html) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
   return next
 }
 
 export function describe(snapshot: Snapshot): string {
   const done = snapshot.issues.filter((issue) => issue.status === 'done').length
-  return `${snapshot.issues.length - done} 張未完成、${done} 張仍被引用的已完成（${snapshot.generatedAt}）`
+  return `${snapshot.issues.length - done} unfinished, ${done} closed but still referenced (${snapshot.generatedAt})`
 }
 
 if (import.meta.main) {
   const snapshot = takeSnapshot()
   await Bun.write(OUTPUT, await renderFragment(snapshot))
-  console.log(`已寫入 ${OUTPUT}：${describe(snapshot)}`)
+  console.log(`Wrote ${OUTPUT}: ${describe(snapshot)}`)
 }

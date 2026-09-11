@@ -61,7 +61,7 @@ bunx -p issue-map@latest issue-map-build out.html
 的值，分组名字也一样，话在 i18n 那一层才组出来。快照里存中文句子的话，换一次语言就得重抓一次
 GitHub。
 
-CLI 那一侧（产文件消息、错误）刻意留中文：那是给开发者看的，不是页面的一部分。
+CLI 那一侧（产文件消息、错误）只有英文，也不跟着页面的语言走：那是 `bunx issue-map` 的输出，给下指令的人看的，不是页面的一部分。例外是 `scripts/mutate.ts`——它是这个 repo 内部的工具，留中文。
 
 ## 前置条件
 
@@ -74,30 +74,28 @@ CLI 那一侧（产文件消息、错误）刻意留中文：那是给开发者�
 
 全部有默认值，一个都不设也跑得起来。默认值长在 `scripts/issue-map.ts` 的 `CONFIG`。
 
-| 环境变量                   | 默认                              | 意思                                                               |
-| -------------------------- | --------------------------------- | ------------------------------------------------------------------ |
-| `GH_REPO`                  | 从 cwd 的 git 推断                | 要画别的 repo 时设它（`gh` 自己的变量，fork 与多 remote 也交给它） |
-| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | 子票在正文指向母票的段落标题。GitHub 原生 sub-issue 有值时优先     |
-| `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | 挂了就是还没评估完，不能交给谁做                                   |
-| `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | 挂了才算评估完、可以动工                                           |
-| `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | 挂了代表有人在做，不必有 assignee                                  |
-| `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | 这些要人做，下一步不写实作指令                                     |
-| `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 可以动工时图上叫人跑的指令                                         |
-| `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | 还要评估时图上叫人跑的指令                                         |
-| `ISSUE_MAP_PORT`           | `4747`                            | server 的端口                                                      |
-| `ISSUE_MAP_OPEN`           | 开                                | 设 `0` 就不自动开浏览器（`bun --watch` 的开发模式默认关掉）        |
+| 环境变量                   | 默认                              | 意思                                                                                                       |
+| -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GH_REPO`                  | 从 cwd 的 git 推断                | 要画别的 repo 时设它（`gh` 自己的变量，fork 与多 remote 也交给它）                                         |
+| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | 子票在正文指向母票的段落标题。GitHub 原生 sub-issue 有值时优先，而且只有原生的看得到已完成的兄弟票（见下） |
+| `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | 挂了就是还没评估完，不能交给谁做                                                                           |
+| `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | 挂了才算评估完、可以动工                                                                                   |
+| `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | 挂了代表有人在做，不必有 assignee                                                                          |
+| `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | 这些要人做，下一步不写实作指令                                                                             |
+| `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 可以动工时图上叫人跑的指令                                                                                 |
+| `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | 还要评估时图上叫人跑的指令                                                                                 |
+| `ISSUE_MAP_PORT`           | `4747`                            | server 的端口                                                                                              |
+| `ISSUE_MAP_OPEN`           | 开                                | 设 `0` 就不自动开浏览器（`bun --watch` 的开发模式默认关掉）                                                |
 
-两个要特别想过的：
+三个要特别想过的：
 
 - **标签词汇**：目标 repo 没在用这套标签就要换成它自己的名字。程序会侦测——快照里完全没出现 ready／unready 任何一个标签时，就不拿 triage 当闸门，否则每张票都会变成「待评估」。
 - **指令名**：`/implement`、`/triage` 是 Claude Code 的 skill。目标 repo 没有的话一定要换掉，不然图上会叫人跑不存在的东西。
+- **已完成的兄弟票要靠原生 sub-issue**：地图只跟 GitHub 要 open 票还牵着的 closed 票——它的阻挡者、它的 parent，以及那个 parent 底下的子票。子票是从 GitHub 原生的 sub-issue 关系拿的，所以用 `## Parent` 正文惯例的 repo 看不到一组里**已完成**的子票，那一组的进度会比实际少。open 票不受影响。另一条路是整包扫过 repo 里所有 closed 票，而那在老 repo 上是几十次请求换个位数张票。一组票如果是原生 sub-issue 之前开的，把子票关联上去一次（票页的 Sub-issues）就会回来；正文惯例可以留着，原生的本来就优先。
 
 ## 常见失败
 
-- `gh api graphql 失敗：…` — `gh` 没登录，或 cwd 不在目标 repo 的 git 树里。
-- `open issue 超過 100 張，這支要改成分頁抓` — GraphQL 的 `first` 上限就是 100。要支持更多票得在 `issue-map.ts` 的 `query()` 加分页；这是要改程序，不是配置。
-
-（CLI 消息是繁体中文，所以这里照它实际印出来的样子引用。）
+- `gh api graphql failed: …` — `gh` 没登录，或 cwd 不在目标 repo 的 git 树里。
 
 ## 文件
 

@@ -71,8 +71,9 @@ The model and fetch side **no longer builds sentences**: `nextStep` is a structu
 `{ kind: 'waitChildren', count: 2 }`, and so are group names. The words are assembled in the i18n
 layer. If the snapshot stored sentences, switching language would mean re-fetching from GitHub.
 
-The CLI side (build messages, errors) is deliberately left in Chinese: that output is for whoever
-develops this tool, not part of the page.
+The CLI side (build messages, errors) is English only and does not follow the page's language
+setting: it is the output of `bunx issue-map`, read by whoever ran the command, not part of the
+page. `scripts/mutate.ts` is the exception — it is an in-repo tool, so it stays Chinese.
 
 ## Requirements
 
@@ -87,20 +88,20 @@ develops this tool, not part of the page.
 Everything has a default — it runs with nothing set. The defaults live in `CONFIG` in
 `scripts/issue-map.ts`.
 
-| Environment variable       | Default                           | Meaning                                                                                                             |
-| -------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `GH_REPO`                  | inferred from the git in cwd      | Set it to map another repo (`gh`'s own variable; forks and multiple remotes are its job too)                        |
-| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | The body heading under which a sub-issue points at its parent. A native GitHub sub-issue relation wins when present |
-| `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | Carrying one means it is not assessed yet and cannot be handed to anyone                                            |
-| `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | Only with one of these does an issue count as assessed and ready to work on                                         |
-| `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | Carrying one means somebody is on it, with or without an assignee                                                   |
-| `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | These need a person, so the next step is not an implementation command                                              |
-| `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | The command the map tells you to run when an issue is ready                                                         |
-| `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | The command the map tells you to run when it still needs assessing                                                  |
-| `ISSUE_MAP_PORT`           | `4747`                            | Port for the server                                                                                                 |
-| `ISSUE_MAP_OPEN`           | on                                | Set `0` to stop opening the browser (the `bun --watch` dev mode has it off)                                         |
+| Environment variable       | Default                           | Meaning                                                                                                                                                                      |
+| -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GH_REPO`                  | inferred from the git in cwd      | Set it to map another repo (`gh`'s own variable; forks and multiple remotes are its job too)                                                                                 |
+| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | The body heading under which a sub-issue points at its parent. A native GitHub sub-issue relation wins when present, and only native ones show _closed_ siblings (see below) |
+| `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | Carrying one means it is not assessed yet and cannot be handed to anyone                                                                                                     |
+| `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | Only with one of these does an issue count as assessed and ready to work on                                                                                                  |
+| `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | Carrying one means somebody is on it, with or without an assignee                                                                                                            |
+| `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | These need a person, so the next step is not an implementation command                                                                                                       |
+| `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | The command the map tells you to run when an issue is ready                                                                                                                  |
+| `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | The command the map tells you to run when it still needs assessing                                                                                                           |
+| `ISSUE_MAP_PORT`           | `4747`                            | Port for the server                                                                                                                                                          |
+| `ISSUE_MAP_OPEN`           | on                                | Set `0` to stop opening the browser (the `bun --watch` dev mode has it off)                                                                                                  |
 
-Two worth thinking through:
+Three worth thinking through:
 
 - **Label vocabulary**: if the target repo does not use this set, replace them with its own names.
   The code detects it — when the snapshot contains none of the ready/unready labels at all, triage
@@ -108,16 +109,19 @@ Two worth thinking through:
 - **Command names**: `/implement` and `/triage` are Claude Code skills. If the target repo has no
   such skills you must change them, or the map will tell people to run something that does not
   exist.
+- **Closed siblings need native sub-issues**: the map asks GitHub only for the closed issues an
+  open one still points at — its blockers, its parent, and that parent's children. Children come
+  from GitHub's native sub-issue relation, so with the `## Parent` body convention a group's
+  _closed_ children never appear and its progress looks smaller than it is. Open issues are not
+  affected. The alternative is scanning every closed issue in the repo, which on an old repo means
+  dozens of requests to find a handful of issues. If a group predates native sub-issues, linking
+  its children once (the issue's Sub-issues panel) brings the closed ones back; the body convention
+  can stay, the native relation wins anyway.
 
 ## When it fails
 
-- `gh api graphql 失敗：…` — `gh` is not logged in, or your cwd is not inside the target repo's git
-  tree.
-- `open issue 超過 100 張，這支要改成分頁抓` — 100 is the hard cap on GraphQL's `first`. Supporting
-  more issues means adding pagination to `query()` in `issue-map.ts`; that is a code change, not
-  configuration.
-
-(CLI messages are in Chinese, so they are quoted here as they actually appear.)
+- `gh api graphql failed: …` — `gh` is not logged in, or your cwd is not inside the target repo's
+  git tree.
 
 ## Files
 
