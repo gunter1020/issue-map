@@ -522,6 +522,27 @@ function renderGroups(): void {
       body.dataset.parent = String(parent)
     }
     groupsEl.appendChild(section)
+    // 進了 DOM 才量得到文字寬度。
+    fitLabels(section)
+  }
+}
+
+/** 線名可用的寬度：gutter 扣掉左右各 8px，右邊那 8px 是不貼到第一站的餘裕。 */
+const LABEL_WIDTH = MAP.gutter - 16
+
+/**
+ * 線名超出 gutter 就壓到剛好放得下。
+ *
+ * 一般的線名是 `→ #16` 這種短字串，放得下就不動它——`textLength` 會把短的**撐開**填滿寬度。
+ * 會超出的是月台那一列（「互不阻擋，可各自開工」之類），語言不同長度也不同，所以用量的而不是
+ * 寫死字數。不壓的話它會蓋在第一個站點上。
+ */
+function fitLabels(section: HTMLElement): void {
+  for (const label of section.querySelectorAll('text.tname, text.tsub')) {
+    if (!(label instanceof SVGTextElement)) continue
+    if (label.getComputedTextLength() <= LABEL_WIDTH) continue
+    label.setAttribute('textLength', String(LABEL_WIDTH))
+    label.setAttribute('lengthAdjust', 'spacingAndGlyphs')
   }
 }
 
@@ -985,6 +1006,9 @@ function render(): void {
   // paintSelection 收尾會畫詳細，沒有選取時它自己退回預設那一張。
   paintSelection()
 }
+
+// 後備內容只給跑不到這裡的環境看（CSP 擋掉 inline script）。走到這行就代表不需要它了。
+document.getElementById('fallback')?.remove()
 
 setLocale(readLocale())
 mountLangPicker()
