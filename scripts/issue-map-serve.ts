@@ -6,14 +6,12 @@
  * 這是 package.json 的預設 bin，所以在**要看的那個 repo** 裡直接跑就會畫那個 repo：
  *   bunx issue-map@latest
  *
- * 起來之後直接開瀏覽器。不要的話設 `ISSUE_MAP_OPEN=0`——`bun --watch` 的開發模式就是這樣關掉
- * 的，否則每存一次檔就多一個分頁。
+ * 起來之後直接開瀏覽器，`ISSUE_MAP_OPEN=0` 可以關掉（`--watch` 的開發模式靠它，否則每存一次
+ * 檔就多一個分頁）。
  *
- * 預設**不綁固定 port**：交給 OS 挑一個沒人用的（`port: 0`），所以在好幾個 repo 裡同時跑也不會
- * 互相撞。實際網址跟正在畫的目錄一起印在啟動訊息裡——兩個分頁長得一樣，靠那一行分辨。
- *
- * 要固定 port 就設 `ISSUE_MAP_PORT`；那時撞到就直接失敗，不會偷偷換一個——指定了還被換掉，書籤
- * 和反向代理都會對不上。
+ * 預設不綁固定 port（`port: 0`，交給 OS 挑），所以在好幾個 repo 裡同時跑不會互相撞；實際網址
+ * 跟正在畫的目錄一起印在啟動訊息裡。設 `ISSUE_MAP_PORT` 可以固定，那時撞到就直接失敗而不偷
+ * 偷換一個——指定了還被換掉，書籤和反向代理都會對不上。
  *
  * 在這個 repo 裡開發時：
  *   bun run issue-map:serve                       # 隨機 port，不自動開
@@ -29,10 +27,7 @@ import { describe, renderFragment, takeSnapshot } from './issue-map.ts'
 const PORT = Number(process.env.ISSUE_MAP_PORT ?? process.env.PORT ?? 0)
 const OPEN = process.env.ISSUE_MAP_OPEN !== '0'
 
-/**
- * 開系統預設瀏覽器。**打不開不算失敗**：server 已經起來了，印出網址讓人自己開就好——把它
- * 當錯誤收掉會讓「地圖其實好好地跑著」這件事被一個無關的問題蓋掉。
- */
+/** 開系統預設瀏覽器。**打不開不算失敗**：server 已經起來了，印出網址讓人自己開就好。 */
 function openInBrowser(url: string): void {
   const command =
     process.platform === 'darwin'
@@ -79,7 +74,6 @@ const server = Bun.serve({
 })
 
 const url = `http://localhost:${server.port}`
-// 目錄一起印：port 每次都不同，而分辨兩台 server 靠的是它畫的是哪個 repo，不是 port。
 console.log(`Dev map for ${process.cwd()}`)
 console.log(`  ${url} (every refresh re-fetches from GitHub)`)
 if (OPEN) openInBrowser(url)

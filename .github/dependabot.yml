@@ -1,9 +1,5 @@
-# 沒有 package-ecosystem: bun 是刻意的：本機 bun 1.4.x 寫的 bun.lock 是
-# lockfileVersion 2，dependabot updater 內建的 bun 只讀到 1，job 直接掛
-# （dependabot/dependabot-core#15848）。改用 npm ecosystem 不能解——這裡沒有
-# package-lock.json，dependabot 只會改 package.json 不動 bun.lock，CI 的
-# --frozen-lockfile 反而每支 PR 都紅。dependabot 支援後把 bun 那段加回來
-# （原本的寫法在 commit 28c516d），在那之前 devDependencies 手動升。
+# 沒有 package-ecosystem: bun：updater image 的 bun 讀不了 lockfileVersion 2 的 bun.lock，
+# job 會失敗。解除條件見 dependabot/dependabot-core#15897。
 version: 2
 
 updates:
