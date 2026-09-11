@@ -424,6 +424,7 @@
   }
 
   .map-wrap {
+    position: relative;
     background: var(--card);
     border: 1px solid var(--line);
     border-top: 2px solid var(--track, var(--line-strong));
@@ -537,17 +538,32 @@
   }
 
   /* 線名 */
-  .tname {
+  /* 線名。畫在 SVG 外面的一欄，這樣長的名字用 text-overflow 就截得掉——SVG 的 <text> 不會
+     換行也不會自己截斷，長一點就會蓋到第一個站點上。寬度比 MAP.gutter 少一點，留白給站點。 */
+  .tlabel {
+    position: absolute;
+    left: 12px;
+    width: 84px;
+    transform: translateY(-12px);
     font-family: var(--mono);
+    pointer-events: none;
+  }
+  .tlabel b,
+  .tlabel span {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tlabel b {
     font-size: 12px;
     font-weight: 600;
-    fill: var(--muted);
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
-  .tsub {
-    font-family: var(--mono);
+  .tlabel span {
     font-size: 10px;
-    fill: var(--faint);
+    color: var(--faint);
   }
 
   .map-key {
@@ -867,54 +883,11 @@
       transition: none !important;
     }
   }
-
-  /* 沒有 JS 時的後備內容。JS 一跑起來整塊就被移除，所以這些樣式平常不會生效。 */
-  #fallback {
-    max-width: 1040px;
-    margin: 0 auto;
-    padding: 32px 24px;
-  }
-  #fallback h1 {
-    font-size: 26px;
-    margin: 0 0 4px;
-  }
-  #fallback .why {
-    color: var(--muted);
-    margin: 0 0 20px;
-    font-size: 14px;
-  }
-  #fallback table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-  #fallback th,
-  #fallback td {
-    text-align: left;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--line);
-    vertical-align: top;
-  }
-  #fallback th {
-    color: var(--muted);
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  #fallback td.num {
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
 </style>
 
 <script id="issue-map-data" type="application/json">
   {}
 </script>
-
-<!-- 沒有 JS 時看到的內容（CSP 擋掉 inline script 的環境）。建置時填入，
-     `issue-map-page.ts` 一跑起來就把整塊移除。 -->
-<div id="fallback"></div>
 
 <div class="page">
   <header class="masthead">
