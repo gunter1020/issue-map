@@ -26,7 +26,7 @@ function issue(
     blockedBy,
     waitingFor: extra.waitingFor ?? (status === 'done' ? [] : blockedBy),
     status,
-    nextStep: '',
+    nextStep: { kind: 'none' },
     isParent: extra.isParent ?? false,
   }
 }
@@ -47,8 +47,8 @@ describe('分群', () => {
     // #1 擋著 #2，#1 自己沒有前置；#9 兩邊都沒有。
     const groups = groupsOf([issue(1), issue(2, { blockedBy: [1] }), issue(9)])
 
-    const alone = groups.find((g) => g.title === '獨立票')
-    const linked = groups.find((g) => g.title === '其他依賴鏈')
+    const alone = groups.find((g) => g.name.kind === 'island')
+    const linked = groups.find((g) => g.name.kind === 'linked')
     expect(linked?.members).toContain(1)
     expect(linked?.members).toContain(2)
     expect(alone?.members).toEqual([9])
@@ -73,7 +73,8 @@ describe('分群', () => {
 
     const family = groups.find((g) => g.parent === 100)
     expect(family?.members).toEqual([101, 102])
-    expect(family?.title).toBe('票 100')
+    // 群名帶的是主票標題本身，不是頁面上的分類字——那一句在 i18n 那一層才組出來。
+    expect(family?.name).toEqual({ kind: 'spec', title: '票 100' })
     // parent 自己不當成員，它是那張圖的標頭；也不該再被歸進別群變成一個站點。
     const elsewhere = groups.filter((g) => g.parent === null).flatMap((g) => g.members)
     expect(elsewhere).not.toContain(100)

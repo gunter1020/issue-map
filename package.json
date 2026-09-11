@@ -1,7 +1,7 @@
 {
   "name": "issue-map",
   "version": "0.2.0",
-  "description": "把 GitHub Issues 的阻擋關係畫成一頁開發地圖：哪幾張票現在可以動、哪幾張在等誰、關鍵路徑是哪一條。",
+  "description": "Draws the blocking relationships between your GitHub Issues as a one-page dev map: which issues can be picked up now, which are waiting on what, and where the critical path runs.",
   "keywords": [
     "bun",
     "cli",
@@ -19,7 +19,11 @@
     "issue-map-build": "./scripts/issue-map.ts"
   },
   "files": [
+    "README.zh-TW.md",
+    "README.zh-CN.md",
+    "README.ja.md",
     "scripts/issue-map.ts",
+    "scripts/issue-map-i18n.ts",
     "scripts/issue-map-model.ts",
     "scripts/issue-map-page.ts",
     "scripts/issue-map-serve.ts",

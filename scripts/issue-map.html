@@ -1,4 +1,4 @@
-<title>開發地圖</title>
+<title>Dev map</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
@@ -35,8 +35,16 @@
     --t3: #8c5a24;
     --t4: #2f7a5a;
 
-    --display: 'Bricolage Grotesque', 'Noto Sans TC', 'PingFang TC', sans-serif;
-    --body: 'Public Sans', 'Noto Sans TC', 'PingFang TC', system-ui, sans-serif;
+    /*
+     * CJK 的部分只到 Noto Sans TC 為止是網路字型，簡體與日文交給系統字型（PingFang SC、
+     * Hiragino、YaHei、Meiryo）——四種語言各拉一套 Noto 會讓這頁多下載幾百 KB，而這是本機
+     * 開發用的頁面。
+     */
+    --cjk:
+      'Noto Sans TC', 'PingFang TC', 'PingFang SC', 'Hiragino Sans', 'Microsoft JhengHei',
+      'Microsoft YaHei', Meiryo;
+    --display: 'Bricolage Grotesque', var(--cjk), sans-serif;
+    --body: 'Public Sans', var(--cjk), system-ui, sans-serif;
     --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
     color-scheme: light;
   }
@@ -143,6 +151,14 @@
     flex-direction: column;
     gap: 14px;
   }
+  /* 抬頭第一行：左邊是 repo 與抓取時間，右邊是語言。 */
+  .masthead-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+  }
   .eyebrow {
     font-family: var(--mono);
     font-size: 11px;
@@ -150,6 +166,21 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--faint);
+  }
+  /* 語言用原生 select：鍵盤與行動裝置都不必自己實作，而且四個選項不值得一套下拉選單。 */
+  .lang {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .lang:hover {
+    color: var(--ink);
+    border-color: var(--ink);
   }
   h1 {
     font-family: var(--display);
@@ -844,8 +875,11 @@
 
 <div class="page">
   <header class="masthead">
-    <div class="eyebrow" id="eyebrow"></div>
-    <h1 id="page-title">開發地圖</h1>
+    <div class="masthead-top">
+      <div class="eyebrow" id="eyebrow"></div>
+      <select class="lang" id="lang"></select>
+    </div>
+    <h1 id="page-title"></h1>
     <p class="lede" id="lede"></p>
     <div class="stats" id="stats"></div>
   </header>
@@ -857,20 +891,17 @@
   <section class="group">
     <div class="list-head">
       <div class="group-head">
-        <h2>清單</h2>
+        <h2 id="list-title"></h2>
         <span class="sub" id="list-sub"></span>
       </div>
-      <div class="tabs" id="tabs" role="group" aria-label="狀態篩選"></div>
+      <div class="tabs" id="tabs" role="group"></div>
     </div>
     <div class="rows" id="rows"></div>
   </section>
 
   <footer>
-    <div>狀態的權威是 GitHub Issues。這一頁是快照，頁面上不能改狀態。</div>
-    <div>
-      重跑 <code>bun run issue-map</code> 產檔，或
-      <code>bun run issue-map:serve</code> 讓重新整理就是最新。
-    </div>
+    <div id="foot-truth"></div>
+    <div id="foot-refresh"></div>
     <div id="foot-config"></div>
   </footer>
 </div>
