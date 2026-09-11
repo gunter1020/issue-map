@@ -3,8 +3,7 @@
  * 那一側（`issue-map-page.ts`）都 import 它，所以它不能碰任何一邊的專屬 API。
  *
  * 這裡住的是「同一份定義只有一份」的東西：狀態的五個值、一張票的形狀、分群規則、關鍵路徑，
- * 以及線路圖的排版。畫面那一側曾經把狀態的五個值再抄一次，兩邊沒有東西保證同步；現在型別
- * 是共用的，抄錯編不過。
+ * 以及線路圖的排版。兩側共用同一份型別，任何一邊自己抄一份都編不過。
  */
 
 /** 一張票現在的處境。同時是頁面的顏色與篩選分頁。 */
@@ -75,7 +74,6 @@ export type Snapshot = {
   readonly repo: string
   /** 這一次實際生效的標籤字彙。圖例照它寫，不然改了設定圖例就會說謊。 */
   readonly labels: { readonly ready: readonly string[]; readonly unready: readonly string[] }
-  /** 一張圖一群。 */
   readonly groups: readonly Group[]
   /** 最長的一條依序未完成鏈，也就是最少要幾輪。 */
   readonly criticalPath: number

@@ -1,34 +1,16 @@
 #!/usr/bin/env bun
 /**
  * 開發地圖：把 GitHub Issues 的阻擋關係抓下來，塞進 `scripts/issue-map.html` 這份樣板，產出一頁
- * 可以直接看的 HTML。
+ * 可以直接看的 HTML。每張票的狀態、在等誰、下一步都在這裡算完才送進頁面，樣板只負責畫。
  *
- * 狀態的權威永遠是 GitHub Issues。這一頁只是**快照**：頁面上不能改狀態，要更新就重跑這支。
- * 這樣不會長出第二個事實來源。
+ * 帶進快照的 issue：所有 open issue，加上仍被 open issue 牽著的 closed issue（畫成「已完成」的
+ * 節點讓進度看得見，沒人牽著之後自然消失）。closed 是**指名**去要的——阻擋者、parent、parent
+ * 底下的子票，不掃整包，因為老 repo 幾千張 closed 裡通常只有個位數會留下。代價：同一組裡已
+ * 完成的兄弟票要靠 GitHub 原生 sub-issue 才抽得到，用內文 `## Parent` 慣例的 repo 看不到它們，
+ * 那一組的進度會比實際少。
  *
- * 每張票的狀態、在等誰、下一步都在這裡算完才送進頁面，樣板只負責畫。
- *
- * 帶進快照的 issue：所有 open issue，加上仍被 open issue 牽著的 closed issue。後者畫成「已完成」
- * 的節點讓進度看得見，沒人牽著之後自然消失。
- *
- * closed 是**指名**去要的（阻擋者、parent、parent 底下的子票），不掃整包——老 repo 幾千張
- * closed 裡通常只有個位數會留下。代價：同一組裡已完成的兄弟票要靠 GitHub 原生 sub-issue 才
- * 抽得到，用內文 `## Parent` 慣例的 repo 看不到它們，那一組的進度會比實際少。
- *
- * **要畫哪個 repo**：從 cwd 的 git 推斷，不必填——在那個 repo 裡跑 `bunx issue-map@latest`
- * 就好。要指定別的 repo 設 `GH_REPO`。標籤字彙與 parent 的慣例都能用環境變數調，見底下的
- * `CONFIG`，整份對照表在 README。
- *
- * 票名不進地圖。曾經試過在內文加一個 `## 短名` 段落給站點當標籤，但那要每張票靠人維護、
- * 而且是票名的第二個事實來源，改標題不會改它。機械縮短標題也試過，這裡的標題沒有一致結構，
- * 縮出來讀不通。所以站點只掛票號，名字交給清單。
- *
- * 用法：
- *   bun run scripts/issue-map.ts                  # 寫到 dist/issue-map.html
- *   bun run scripts/issue-map.ts path/to/out.html
- *
- * 要「重新整理就是最新」，改跑 `scripts/issue-map-serve.ts`：它每個請求都呼叫這裡的
- * `takeSnapshot` 重抓一次。
+ * 用法：`bun run scripts/issue-map.ts [out.html]`，預設寫到 `dist/issue-map.html`。
+ * 環境變數與設計決定見 README；移植要調的東西在底下的 `CONFIG`。
  */
 
 import { spawnSync } from 'bun'
@@ -61,8 +43,7 @@ function labelList(raw: string | undefined, fallback: string): readonly string[]
 /**
  * 移植時要調的東西全在這裡，而且都有預設值——不設任何一個也跑得起來。
  *
- * repo 不在這裡：`gh` 的 `{owner}`／`{repo}` 佔位符會從 cwd 的 git 推斷，要指定別的 repo 就設
- * `GH_REPO`（`gh` 自己的環境變數，fork 與多 remote 的判斷也一併交給它）。
+ * repo 不在這裡：那是 `gh` 自己的 `GH_REPO`，fork 與多 remote 的判斷也一併交給它。
  */
 const CONFIG = {
   /** 子票在內文裡指向 parent 的標題。GitHub 原生 sub-issue 有值時優先用原生的。 */
@@ -223,9 +204,8 @@ function childrenQuery(parent: number): string {
 /**
  * 拿這些 parent 底下的子票，為的是把同一組裡**已完成**的兄弟票撈出來當進度。
  *
- * 只有 GitHub 原生 sub-issue 有值。用內文 `## Parent` 慣例的 repo 這裡是空的，那些已完成的
- * 兄弟票就不會出現在圖上——要把它們找回來只能整包掃 closed，而那對老 repo 是幾十次請求換
- * 幾張票。open 的兄弟不必靠這裡，它們本來就在 open 那包。
+ * 只有 GitHub 原生 sub-issue 有值；用內文 `## Parent` 慣例的 repo 這裡是空的（檔頭說的那個
+ * 代價）。open 的兄弟不必靠這裡，它們本來就在 open 那包。
  */
 function fetchChildren(parents: readonly number[]): RawIssue[] {
   type Batch = { repository: Record<string, { subIssues: Page<RawIssue> } | null> }
@@ -278,9 +258,7 @@ export function takeSnapshot(): Snapshot {
     open.flatMap((issue) => issue.blockedBy.nodes.map((blocker) => blocker.number)),
   )
 
-  // 進圖的 closed issue 只有 open issue 還牽著的那些：它們的阻擋者、它們的 parent，以及同一個
-  // parent 底下已完成的兄弟（那一組的進度）。所以不掃整包 closed，而是指名去要——老 repo 的
-  // 幾千張 closed 裡通常只有個位數會留下，翻完它們是拿幾十次請求換幾張票。
+  // 指名去要而不掃整包 closed，理由見檔頭。
   const referenced = [...new Set([...blockers, ...openParents])].filter(
     (number) => !openNumbers.has(number),
   )
@@ -389,13 +367,11 @@ function describeIssue(raw: Issue, context: Context): MapIssue {
   }
 }
 
-/** 把快照塞進樣板。回傳的是 artifact 用的片段（沒有 doctype／html／head／body）。 */
 /**
  * 把畫面那一支打包成一段可以直接放進 `<script>` 的程式碼。
  *
- * 產出必須是**一個檔案**（artifact 的頁面就是一份 HTML），但來源不必——來源是 TypeScript，
- * 所以型別跟這裡共用同一份定義，而且純推導測得到。`format: 'iife'` 是因為它要塞進行內；
- * 不 minify 是因為這是開發用的頁面，讀得懂比小重要。
+ * 產出必須是一個檔案，但來源不必——來源是 TypeScript，所以型別跟這裡共用同一份定義，而且純
+ * 推導測得到。`format: 'iife'` 是因為它要塞進行內；不 minify 是因為這是開發用的頁面。
  */
 async function bundleClient(): Promise<string> {
   const built = await Bun.build({
@@ -410,6 +386,7 @@ async function bundleClient(): Promise<string> {
   return output.text()
 }
 
+/** 把快照塞進樣板。回傳的是 artifact 用的片段（沒有 doctype／html／head／body）。 */
 export async function renderFragment(snapshot: Snapshot): Promise<string> {
   const template = await Bun.file(TEMPLATE).text()
   const withData = replaceIn(

@@ -1,10 +1,8 @@
 /**
  * 突變測試：改壞一行，看測試會不會紅。
  *
- * **為什麼手寫而不是用 Stryker。** Stryker 的 runner 清單是 jasmine／jest／karma／mocha／tap／
- * vitest／cucumber／command——沒有 bun。只能走 command runner，而它對**每一個 mutant 重跑全部
- * 測試**。這支限定範圍到單一檔案並只跑指定的測試檔，幾分鐘就跑完。（這支跟著開發地圖從原本
- * 的專案搬過來，那邊的規模是全套 29 秒、src 一萬行，用 Stryker 估要十幾小時。）
+ * **為什麼手寫而不是用 Stryker。** Stryker 沒有 bun runner，只能走 command runner，而它對
+ * 每一個 mutant 重跑全部測試。這支限定範圍到單一檔案並只跑指定的測試檔。
  *
  * 它回答兩個問題，第二個是 `--coverage` 答不出來的：
  *   1. **突變分數**——改壞了有沒有人抓到。存活的 mutant 就是覆蓋率數字騙人的地方。
@@ -20,6 +18,7 @@
  */
 
 import { spawn } from 'bun'
+import { writeFileSync } from 'node:fs'
 
 /** 保型別的算子。順序有意義：先比對長的（`===` 要贏過 `==`）。 */
 const OPERATORS: readonly { readonly from: string; readonly to: string }[] = [
@@ -46,14 +45,12 @@ type Mutant = {
  * 跳過註解與型別位置。
  *
  * **型別位置一定要跳。** discriminated union 的 `{ ok: false; why: … }` 把 `false` 換成 `true`
- * 只改型別不改行為，於是它必然存活——而那種誤報會蓋掉真正的存活 mutant。實測 `engine/stage.ts`
- * 第一版報 4 個存活，四個全是 union 的續行；扣掉之後突變分數從 64% 變成 100%。
+ * 只改型別不改行為，於是它必然存活，而那種誤報會蓋掉真正的存活 mutant。union／intersection
+ * 的續行（`|`、`&` 開頭）與型別成員（`readonly` 開頭）都算型別位置——`readonly` 在 TypeScript
+ * 只出現在型別位置，所以跳它不會漏掉程式碼。
  *
- * union／intersection 的續行（`|`、`&` 開頭）與型別成員（`readonly` 開頭）都算型別位置。
- * `readonly` 在 TypeScript 只出現在型別位置，所以跳它不會漏掉程式碼。
- *
- * 不做完整的 JS 剖析：字串字面值裡的 `true` 被換掉頂多多產一個必然存活的 mutant，而那是報表上
- * 看得見的雜訊，不是靜默的錯。真的要精確就得整個 parser，代價遠超過這支腳本的用途。
+ * 不做完整的 JS 剖析：字串字面值裡的 `true` 被換掉頂多多產一個必然存活的 mutant，那是報表上
+ * 看得見的雜訊，不是靜默的錯。
  */
 const skippable = (line: string): boolean => {
   const t = line.trim()
@@ -96,8 +93,7 @@ const plan = (source: string): Mutant[] => {
  * 一次測試的結果。
  *
  * `timeout` 和 `broken` 要分開：**逾時算殺掉**——把迴圈的離開條件改反，測試就跑不完，那正是
- * 測試把缺陷擋下來了（Stryker、PIT 也都這樣算）。編譯失敗或 crash 才是不計分，因為殺掉它的
- * 是編譯器不是測試。
+ * 測試把缺陷擋下來了。編譯失敗或 crash 才不計分，因為殺掉它的是編譯器不是測試。
  */
 type RunResult =
   | { readonly kind: 'ran'; readonly failed: number }
@@ -107,16 +103,10 @@ type RunResult =
 /**
  * 型別檢查現在磁碟上的內容。編譯不過的 mutant 不計分——殺掉它的是編譯器不是測試。
  *
- * **保型別的算子不等於保型別的 mutant。** `===` → `!==` 會把 narrowing 的方向一起翻過來：
- *
- * ```ts
- * if (back === undefined) break   // 之後 back 收斂成 number
- * at = back                       // 編譯得過
- * ```
- *
- * 換成 `!==` 之後 `back` 收斂成 `undefined`，`at = back` 就是 TS2322。而 `bun test` 只剝型別、
- * 不檢查型別，這種 mutant 照樣跑得起來、測試照樣紅，於是被誤記成「測試殺掉的」，把突變分數灌水。
- * Stryker 用 typescript-checker 解同一個問題，而且同樣排在 test runner 之前。
+ * **保型別的算子不等於保型別的 mutant。** `===` → `!==` 會把 narrowing 的方向一起翻過來
+ * （`if (x === undefined) break` 之後 `x` 是 number，換成 `!==` 就成了 undefined），於是後面
+ * 的賦值變成 TS2322。而 `bun test` 只剝型別、不檢查型別，這種 mutant 照樣跑得起來、測試照樣
+ * 紅，會被誤記成「測試殺掉的」而把突變分數灌水。
  */
 const typechecks = async (): Promise<boolean> => {
   const proc = spawn(['bunx', 'tsc', '--noEmit'], { stdout: 'pipe', stderr: 'pipe' })
@@ -153,6 +143,12 @@ const BASELINE_TIMEOUT_MS = 120_000
 const TIMEOUT_FACTOR = 20
 /** 逾時下限。基準只有幾毫秒時不能真的照倍數算。 */
 const MIN_TIMEOUT_MS = 2_000
+
+/** 中斷時要攔的訊號。 */
+const SIGNALS = ['SIGINT', 'SIGTERM'] as const
+type Signal = (typeof SIGNALS)[number]
+/** 離開碼照 shell 慣例：128 + 訊號編號。 */
+const EXIT_CODE: Readonly<Record<Signal, number>> = { SIGINT: 130, SIGTERM: 143 }
 
 const main = async (): Promise<number> => {
   const [target, ...testTargets] = process.argv.slice(2)
@@ -198,6 +194,18 @@ const main = async (): Promise<number> => {
   let timeouts = 0
   let broken = 0
 
+  // SIGINT／SIGTERM 不經過 `finally`，要另外攔才不會把改壞的那一行留在工作目錄裡。
+  // 同步寫入：handler 裡沒有等 promise 的機會。
+  const hooked = SIGNALS.map((signal) => {
+    const handler = (): void => {
+      writeFileSync(target, original)
+      console.error(`\n收到 ${signal}，已還原 ${target}`)
+      process.exit(EXIT_CODE[signal])
+    }
+    process.on(signal, handler)
+    return { signal, handler } as const
+  })
+
   try {
     for (const [index, mutant] of mutants.entries()) {
       const patched = [...lines]
@@ -226,7 +234,8 @@ const main = async (): Promise<number> => {
       else killCounts.push({ mutant, failed: result.failed })
     }
   } finally {
-    // **一定要還原。** 中途 Ctrl+C 留下一個改壞的檔案比沒有這支腳本糟得多
+    for (const { signal, handler } of hooked) process.off(signal, handler)
+    // **一定要還原。** 留下一個改壞的檔案比沒有這支腳本糟得多
     await Bun.write(target, original)
   }
 
