@@ -9,17 +9,24 @@
  * 起來之後直接開瀏覽器。不要的話設 `ISSUE_MAP_OPEN=0`——`bun --watch` 的開發模式就是這樣關掉
  * 的，否則每存一次檔就多一個分頁。
  *
+ * 預設**不綁固定 port**：交給 OS 挑一個沒人用的（`port: 0`），所以在好幾個 repo 裡同時跑也不會
+ * 互相撞。實際網址跟正在畫的目錄一起印在啟動訊息裡——兩個分頁長得一樣，靠那一行分辨。
+ *
+ * 要固定 port 就設 `ISSUE_MAP_PORT`；那時撞到就直接失敗，不會偷偷換一個——指定了還被換掉，書籤
+ * 和反向代理都會對不上。
+ *
  * 在這個 repo 裡開發時：
- *   bun run issue-map:serve                       # http://localhost:4747，不自動開
- *   ISSUE_MAP_PORT=5000 bun run issue-map:serve
+ *   bun run issue-map:serve                       # 隨機 port，不自動開
+ *   ISSUE_MAP_PORT=4747 bun run issue-map:serve   # 固定網址，--watch 重啟後還是同一個
  */
 
 import { spawnSync } from 'bun'
 
 import { describe, renderFragment, takeSnapshot } from './issue-map.ts'
 
-// `PORT` 是 Claude 桌面 app 的 launch.json 在 autoPort 換 port 時塞進來的。
-const PORT = Number(process.env.ISSUE_MAP_PORT ?? process.env.PORT ?? 4747)
+// `PORT` 是 Claude 桌面 app 的 launch.json 在 autoPort 換 port 時塞進來的。都沒設就是 0：
+// 由 OS 指派，`server.port` 才是真的在聽的那個。
+const PORT = Number(process.env.ISSUE_MAP_PORT ?? process.env.PORT ?? 0)
 const OPEN = process.env.ISSUE_MAP_OPEN !== '0'
 
 /**
@@ -72,5 +79,7 @@ const server = Bun.serve({
 })
 
 const url = `http://localhost:${server.port}`
-console.log(`Dev map: ${url} (every refresh re-fetches from GitHub)`)
+// 目錄一起印：port 每次都不同，而分辨兩台 server 靠的是它畫的是哪個 repo，不是 port。
+console.log(`Dev map for ${process.cwd()}`)
+console.log(`  ${url} (every refresh re-fetches from GitHub)`)
 if (OPEN) openInBrowser(url)

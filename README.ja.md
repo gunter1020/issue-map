@@ -35,9 +35,11 @@ bunx issue-map@latest
 
 `@latest` は npm 上の最新版を取ります。特定のバージョンに固定するなら `bunx issue-map@0.2.0`。
 
-`http://localhost:4747` で起動し、**そのままブラウザを開きます**。更新するたびに GitHub を取り直す
-ので、見えているのは常に現在の状態です。repo は `gh` が cwd の git から推測するため、指定は不要
-です。
+OS が空いている port を割り当てて起動し、**そのままブラウザを開きます**。起動時の行に対象のディ
+レクトリと URL が出るので、複数の repo で同時に動かしてもぶつかりません。port を固定するなら
+`ISSUE_MAP_PORT` を設定します。こちらは厳密で、埋まっていれば黙って別の port に移らず失敗します。
+更新するたびに GitHub を取り直すので、見えているのは常に現在の状態です。repo は `gh` が cwd の
+git から推測するため、指定は不要です。
 
 タブを勝手に開いてほしくなければ `ISSUE_MAP_OPEN=0` を設定します。
 
@@ -101,7 +103,7 @@ CLI 側（生成メッセージ、エラー）は英語のみで、ページの�
 | `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | 人がやるもの。次の一手に実装コマンドを出さない                                                                                                     |
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 着手できるときにマップが促すコマンド                                                                                                               |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | まだ評価が要るときにマップが促すコマンド                                                                                                           |
-| `ISSUE_MAP_PORT`           | `4747`                            | server のポート                                                                                                                                    |
+| `ISSUE_MAP_PORT`           | OS が割り当てる空き port          | server のポート                                                                                                                                    |
 | `ISSUE_MAP_OPEN`           | 有効                              | `0` にするとブラウザを開かない（`bun --watch` の開発モードは既定で無効）                                                                           |
 
 とくに考えておくべきものが 3 つ：

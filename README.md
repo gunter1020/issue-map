@@ -33,9 +33,11 @@ bunx issue-map@latest
 
 `@latest` takes the newest version on npm; pin one with `bunx issue-map@0.2.0`.
 
-It serves `http://localhost:4747` **and opens your browser**. Every refresh re-fetches from GitHub,
-so what you see is the current state. The repo is what `gh` infers from the git remote in your cwd —
-nothing to fill in.
+It serves on a free port the OS picks **and opens your browser**; the startup line prints the
+directory it is mapping and the URL, so several repos can serve at once without clashing. Pin the
+port with `ISSUE_MAP_PORT` — that one is strict, and fails instead of moving if it is taken. Every
+refresh re-fetches from GitHub, so what you see is the current state. The repo is what `gh` infers
+from the git remote in your cwd — nothing to fill in.
 
 Set `ISSUE_MAP_OPEN=0` if you don't want the tab.
 
@@ -98,7 +100,7 @@ Everything has a default — it runs with nothing set. The defaults live in `CON
 | `ISSUE_MAP_LABELS_HUMAN`   | `ready-for-human`                 | These need a person, so the next step is not an implementation command                                                                                                       |
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | The command the map tells you to run when an issue is ready                                                                                                                  |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | The command the map tells you to run when it still needs assessing                                                                                                           |
-| `ISSUE_MAP_PORT`           | `4747`                            | Port for the server                                                                                                                                                          |
+| `ISSUE_MAP_PORT`           | an OS-assigned free port          | Port for the server                                                                                                                                                          |
 | `ISSUE_MAP_OPEN`           | on                                | Set `0` to stop opening the browser (the `bun --watch` dev mode has it off)                                                                                                  |
 
 Three worth thinking through:
