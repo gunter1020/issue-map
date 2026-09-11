@@ -3,9 +3,20 @@
  * **只能碰瀏覽器的東西**，不能 import Bun 的 API。
  *
  * 形狀與純推導在 `issue-map-model.ts`：狀態的五個值、票的形狀、分群、關鍵路徑、線路圖的排版
- * 都在那邊，兩側共用同一份定義。這裡剩下的是 DOM、事件與收合狀態。
+ * 都在那邊，兩側共用同一份定義。文案全部在 `issue-map-i18n.ts`，這一支不寫死任何一句給人看的
+ * 話。剩下的是 DOM、事件、收合與語言狀態。
  */
 
+import {
+  DEFAULT_LOCALE,
+  isLocale,
+  type Locale,
+  LOCALE_NAME,
+  LOCALES,
+  locale,
+  setLocale,
+  t,
+} from './issue-map-i18n.ts'
 import {
   layoutOf,
   MAP,
@@ -13,9 +24,9 @@ import {
   type Group,
   type Layout,
   type MapIssue,
+  type NextStep,
   type Point,
   type Snapshot,
-  STATUS_LABEL,
   STATUS_ORDER,
   type Status,
 } from './issue-map-model.ts'
@@ -82,6 +93,62 @@ function issueAt(number: number): MapIssue | undefined {
   return byNumber.get(number)
 }
 
+// ---- 語言 ----
+
+/**
+ * 語言記在瀏覽器、而且不分 repo——同一個人看好幾個 repo 的地圖，語言是他的偏好，不是某個專案
+ * 的設定。讀不到（無痕、封鎖）或存的是舊值就用預設的英文。
+ *
+ * 刻意不看 `navigator.language`：這一頁的預設語言是英文，猜錯了反而要每次進來都改回去。
+ */
+const LOCALE_KEY = 'issue-map:locale'
+
+function readLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(LOCALE_KEY)
+    if (isLocale(saved)) return saved
+  } catch {
+    // 讀不到就用預設，畫面照樣是完整的。
+  }
+  return DEFAULT_LOCALE
+}
+
+function statusLabel(status: Status): string {
+  return t(`status.${status}`)
+}
+
+/** 日期一律照當下語言排。快照裡存的是 ISO 字串，格式化是畫面的事。 */
+function dateTime(iso: string): string {
+  return new Date(iso).toLocaleString(locale(), { hour12: false })
+}
+
+function dateOnly(iso: string): string {
+  return new Date(iso).toLocaleDateString(locale())
+}
+
+/** 語言選單只做一次；換語言是整頁重畫，選單自己不重建，不然焦點會掉。 */
+function mountLangPicker(): void {
+  const picker = pick('lang')
+  if (!(picker instanceof HTMLSelectElement)) throw new Error('#lang 不是 select')
+  for (const option of LOCALES) {
+    const node = document.createElement('option')
+    node.value = option
+    node.textContent = LOCALE_NAME[option]
+    picker.appendChild(node)
+  }
+  picker.value = locale()
+  picker.addEventListener('change', () => {
+    if (!isLocale(picker.value)) return
+    setLocale(picker.value)
+    try {
+      localStorage.setItem(LOCALE_KEY, picker.value)
+    } catch {
+      // 存不了就只在這一次有效。
+    }
+    render()
+  })
+}
+
 // ---- 收合狀態 ----
 
 /**
@@ -89,6 +156,8 @@ function issueAt(number: number): MapIssue | undefined {
  * 就當成全部展開。
  */
 const COLLAPSE_KEY = `issue-map:collapsed:${repo}`
+
+/** 每顆收合鈕重畫自己的樣子。整頁重畫時要清掉，不然會留著指向已被移除的鈕的函式。 */
 const onFold: (() => void)[] = []
 
 function readFolded(): Set<string> {
@@ -114,6 +183,7 @@ function setFolded(parent: number, shut: boolean): void {
     // 存不了就只在這一次有效，畫面照樣能開合。
   }
   for (const repaint of onFold) repaint()
+  paintFolded()
 }
 
 /** 做一顆收合鈕。`parent` 是主票號碼，同一個號碼的鈕與清單列連動。 */
@@ -124,7 +194,10 @@ function foldButton(parent: number): HTMLButtonElement {
   const paint = () => {
     const open = !isFolded(parent)
     button.setAttribute('aria-expanded', String(open))
-    button.setAttribute('aria-label', `${open ? '收起' : '展開'} #${parent} 的子票`)
+    button.setAttribute(
+      'aria-label',
+      open ? t('fold.collapse', { n: parent }) : t('fold.expand', { n: parent }),
+    )
     button.textContent = open ? '−' : '+'
   }
   paint()
@@ -147,56 +220,76 @@ function paintFolded(): void {
 
 function renderHeader(): void {
   const stats = pick('stats')
+  stats.innerHTML = ''
   const tiles: { label: string; value: number; unit?: string; tone?: string }[] = [
-    { label: '現在可動', value: counts.ready, tone: 'ready' },
-    { label: '有人接手', value: counts.active, tone: 'active' },
-    { label: '被前置擋住', value: counts.blocked, unit: `/ ${openCount}`, tone: 'blocked' },
-    { label: '規格未定案', value: counts.triage, tone: 'triage' },
-    { label: '關鍵路徑', value: criticalPath, unit: '張' },
+    { label: t('stat.ready'), value: counts.ready, tone: 'ready' },
+    { label: t('stat.active'), value: counts.active, tone: 'active' },
+    { label: t('stat.blocked'), value: counts.blocked, unit: `/ ${openCount}`, tone: 'blocked' },
+    { label: t('stat.triage'), value: counts.triage, tone: 'triage' },
+    {
+      label: t('stat.critical'),
+      value: criticalPath,
+      unit: t('stat.critical.unit', { n: criticalPath }),
+    },
   ]
   for (const tile of tiles) {
     const box = document.createElement('div')
     box.className = 'stat'
     if (tile.tone) box.dataset.tone = tile.tone
-    const unit = tile.unit ? `<small>${tile.unit}</small>` : ''
-    box.innerHTML = `<b>${tile.value}${unit}</b><span>${tile.label}</span>`
+    const unit = tile.unit ? `<small>${esc(tile.unit)}</small>` : ''
+    box.innerHTML = `<b>${tile.value}${unit}</b><span>${esc(tile.label)}</span>`
     stats.appendChild(box)
   }
 
   // 抬頭全部照資料寫，換 repo 或換標籤字彙才不會留著上一個專案的字。
-  const heading = `${repo.split('/').pop() || '開發地圖'} 開發地圖`
+  const name = repo.split('/').pop()
+  const heading = name ? t('title.withRepo', { repo: name }) : t('title.plain')
   pick('page-title').textContent = heading
   document.title = heading
-  const when = raw.generatedAt
-    ? ` · ${new Date(raw.generatedAt).toLocaleString('zh-TW', { hour12: false })}`
-    : ''
+  document.documentElement.lang = locale()
+  pick('lang').setAttribute('aria-label', t('lang.label'))
+  const when = raw.generatedAt ? ` · ${dateTime(raw.generatedAt)}` : ''
   pick('eyebrow').textContent = repo + when
 
   pick('lede').innerHTML = lede()
+  renderFooter()
+}
+
+function renderFooter(): void {
+  pick('foot-truth').textContent = t('foot.truth')
+  const code = (command: string) => `<code>${esc(command)}</code>`
+  pick('foot-refresh').innerHTML = t('foot.refresh', {
+    build: code('bun run issue-map'),
+    serve: code('bun run issue-map:serve'),
+  })
 
   const vocab = raw.labels ?? { ready: [], unready: [] }
+  // textContent：標籤名是 repo 給的字，不經過 innerHTML 就不必逃脫。
   pick('foot-config').textContent = vocab.ready.length
-    ? `這一次的判準：掛 ${vocab.ready.join(' 或 ')} 才算可動；掛 ${vocab.unready.join('／')} 或沒掛角色標籤算未定案。`
-    : '這個 repo 沒有在用 triage 標籤，狀態只看阻擋與接手。'
+    ? t('foot.vocab', {
+        ready: vocab.ready.join(t('join.or')),
+        unready: vocab.unready.join(t('join.slash')),
+      })
+    : t('foot.noVocab')
 }
 
 /** 導言只講數得出來的事實。沒有可動的票、或整批都關完了，句子跟著換。 */
 function lede(): string {
-  if (!openCount) return '這個 repo 沒有未完成的票。'
+  if (!openCount) return t('lede.allDone')
   const frontline = work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)
-  const parts = [`${openCount} 張未完成。`]
+  const parts = [t('lede.open', { n: openCount })]
   if (frontline.length) {
     const first = frontline
       .slice(0, 3)
       .map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">#${i.number}</a>`)
-      .join('、')
-    parts.push(`<strong>現在可動 ${frontline.length} 張，最前面是 ${first}</strong>。`)
+      .join(t('join.items'))
+    parts.push(t('lede.ready', { n: frontline.length, issues: first }))
   } else {
-    parts.push('<strong>現在沒有可動的票</strong>——每一張都在等前置或等 triage。')
+    parts.push(t('lede.none'))
   }
-  if (counts.blocked) parts.push(`${counts.blocked} 張被前置擋住。`)
-  if (counts.triage) parts.push(`${counts.triage} 張規格還沒定案，要先 triage。`)
-  if (criticalPath > 1) parts.push(`關鍵路徑 ${criticalPath} 張，那是最少要幾輪才收得完。`)
+  if (counts.blocked) parts.push(t('lede.blocked', { n: counts.blocked }))
+  if (counts.triage) parts.push(t('lede.triage', { n: counts.triage }))
+  if (criticalPath > 1) parts.push(t('lede.critical', { n: criticalPath }))
   return parts.join(' ')
 }
 
@@ -308,7 +401,7 @@ function stationFor(issue: MapIssue, q: Point): SVGAElement {
   station.setAttribute('rel', 'noopener')
   station.setAttribute(
     'aria-label',
-    `#${issue.number} ${issue.title}，${STATUS_LABEL[issue.status]}`,
+    t('node.aria', { n: issue.number, title: issue.title, status: statusLabel(issue.status) }),
   )
   station.dataset.status = issue.status
   station.dataset.number = String(issue.number)
@@ -344,10 +437,15 @@ function mapFor(shown: Shown): HTMLDivElement {
   layout.tracks.forEach((chain, index) => {
     const terminus = chain[chain.length - 1]
     if (chain.length < 2 || terminus === undefined) return
-    trackLabel(svg, MAP.top + index * MAP.row, `→ #${terminus}`, `${chain.length} 站`)
+    trackLabel(
+      svg,
+      MAP.top + index * MAP.row,
+      `→ #${terminus}`,
+      t('map.stations', { n: chain.length }),
+    )
   })
   if (layout.islandRows) {
-    trackLabel(svg, MAP.top + layout.islandFrom * MAP.row, '無前置', '可各自開工')
+    trackLabel(svg, MAP.top + layout.islandFrom * MAP.row, t('map.islandName'), t('map.islandSub'))
   }
 
   const seenTo = new Map<number, number>()
@@ -377,14 +475,17 @@ function mapFor(shown: Shown): HTMLDivElement {
 function mapKey(): HTMLDivElement {
   const key = document.createElement('div')
   key.className = 'map-key'
+  const shapes: readonly [string, string][] = [
+    ['k-ready', t('legend.ready')],
+    ['k-active', t('legend.active')],
+    ['k-blocked', t('legend.blocked')],
+    ['k-triage', t('legend.triage')],
+    ['k-done', t('legend.done')],
+  ]
   key.innerHTML =
-    '<span><i class="k-ready"></i>現在可動</span>' +
-    '<span><i class="k-active"></i>有人接手</span>' +
-    '<span><i class="k-blocked"></i>等前置</span>' +
-    '<span><i class="k-triage"></i>規格未定案</span>' +
-    '<span><i class="k-done"></i>已關閉</span>' +
-    '<span>實線＝還沒解開的前置</span>' +
-    '<span>虛線＝前置已關</span>'
+    shapes.map(([mark, label]) => `<span><i class="${mark}"></i>${esc(label)}</span>`).join('') +
+    `<span>${esc(t('legend.solid'))}</span>` +
+    `<span>${esc(t('legend.dashed'))}</span>`
   return key
 }
 
@@ -392,6 +493,7 @@ const TRACK_COLOURS = ['--t1', '--t2', '--t3', '--t4']
 
 function renderGroups(): void {
   const groupsEl = pick('groups')
+  groupsEl.innerHTML = ''
   const shownGroups: Shown[] = (raw.groups ?? []).map((group, index) => ({
     group,
     members: group.members.map(issueAt).filter((issue): issue is MapIssue => issue !== undefined),
@@ -405,7 +507,7 @@ function renderGroups(): void {
 
     const header = document.createElement('div')
     header.className = 'group-head'
-    header.innerHTML = `<h2>${esc(shown.group.title)}</h2><span class="sub">${groupSub(shown)}</span>`
+    header.innerHTML = `<h2>${esc(groupTitle(shown.group))}</h2><span class="sub">${groupSub(shown)}</span>`
     section.appendChild(header)
 
     const body = mapFor(shown)
@@ -423,15 +525,33 @@ function renderGroups(): void {
   }
 }
 
+/** 一群票的標題。主票那一群用主票標題（真資料），其他三種是頁面自己的分類。 */
+function groupTitle(group: Group): string {
+  switch (group.name.kind) {
+    case 'spec':
+      return group.name.title
+    case 'orphan':
+      return t('group.orphan', { n: group.name.parent })
+    case 'linked':
+      return t('group.linked')
+    case 'island':
+      return t('group.island')
+  }
+}
+
 function groupSub(shown: Shown): string {
   const parent = shown.group.parent
-  if (parent === null) return '互不阻擋，可各自開工'
+  // 「其他依賴鏈」與「獨立票」都沒有主票，但只有後者互不阻擋——同一句話蓋兩種群會說謊。
+  if (shown.group.name.kind === 'linked') return esc(t('group.linkedSub'))
+  if (parent === null) return esc(t('group.islandSub'))
   const done = shown.members.filter((m) => m.status === 'done').length
   const spec = issueAt(parent)
   const specLink = spec
-    ? `<a href="${esc(spec.url)}" target="_blank" rel="noopener">#${parent} parent spec</a> · `
+    ? `<a href="${esc(spec.url)}" target="_blank" rel="noopener">${esc(
+        t('group.spec', { n: parent }),
+      )}</a> · `
     : ''
-  return `${specLink}子票 ${done} / ${shown.members.length} 已完成 · 全關後才關 parent`
+  return specLink + esc(t('group.progress', { done, total: shown.members.length }))
 }
 
 // ---- 詳細 ----
@@ -459,20 +579,42 @@ function link(n: number): string {
 }
 
 function pill(issue: MapIssue): string {
-  return `<span class="pill" data-status="${issue.status}">${STATUS_LABEL[issue.status]}</span>`
+  return `<span class="pill" data-status="${issue.status}">${esc(statusLabel(issue.status))}</span>`
+}
+
+/** 下一步的句子。模型只說是哪一種，話在這裡才組出來。 */
+function stepText(step: NextStep): string {
+  switch (step.kind) {
+    case 'none':
+      return '—'
+    case 'command':
+      return step.command
+    case 'manual':
+      return t('step.manual')
+    case 'active':
+      return step.who.length ? step.who.join(t('join.slash')) : t('step.active')
+    case 'waitIssues':
+      return t('step.waitIssues', { issues: step.issues.map(hash).join(' ') })
+    case 'waitChildren':
+      return t('step.waitChildren', { n: step.count })
+    case 'parentReady':
+      return t('step.parentReady')
+  }
 }
 
 /**
- * 下一步是斜線指令的時候做成按鈕，按了把「指令 ＋ 票號」整句複製走——真正要貼進去的是那一
- * 整句，只顯示指令的話還得自己補票號。不是指令的（接手的人、等哪幾張）就純文字。
+ * 是指令的時候做成按鈕，按了把「指令 ＋ 票號」整句複製走——真正要貼進去的是那一整句，只顯示
+ * 指令的話還得自己補票號。其他的（接手的人、等哪幾張）就純文字。
  */
 function stepCell(issue: MapIssue): string {
-  if (!issue.nextStep) return '<span class="next">—</span>'
-  if (!issue.nextStep.startsWith('/')) return `<span class="next">${esc(issue.nextStep)}</span>`
-  const command = `${issue.nextStep} #${issue.number}`
+  const step = issue.nextStep
+  const text = stepText(step)
+  if (step.kind !== 'command') return `<span class="next">${esc(text)}</span>`
+  const command = `${step.command} #${issue.number}`
+  const title = esc(t('copy.title', { command }))
   return (
-    `<button type="button" class="copy" data-copy="${esc(command)}" title="複製 ${esc(command)}">` +
-    `<span class="copy-text">${esc(issue.nextStep)}</span></button>`
+    `<button type="button" class="copy" data-copy="${esc(command)}" title="${title}">` +
+    `<span class="copy-text">${esc(step.command)}</span></button>`
   )
 }
 
@@ -482,26 +624,33 @@ function detailHTML(number: number): string {
   if (!issue) return ''
   const settled = issue.blockedBy.filter((b) => !issue.waitingFor.includes(b))
   const opens = (unlocks.get(number) ?? []).filter((n) => issueAt(n)?.status !== 'done')
-  const closed = issue.closedAt
-    ? ` ${new Date(issue.closedAt).toLocaleDateString('zh-TW')} 關閉`
-    : ''
+  const closed = issue.closedAt ? esc(t('detail.closedAt', { date: dateOnly(issue.closedAt) })) : ''
   const rows: [string, string][] = [
-    ['狀態', pill(issue) + closed],
-    ['下一步', stepCell(issue)],
+    [t('detail.status'), pill(issue) + closed],
+    [t('detail.next'), stepCell(issue)],
   ]
-  if (issue.author) rows.push(['開票', esc(issue.author)])
-  if (issue.parent !== null) rows.push(['Parent', link(issue.parent)])
-  if (issue.waitingFor.length) rows.push(['等誰', issue.waitingFor.map(link).join(' ')])
-  if (settled.length) rows.push(['已解鎖的前置', settled.map(link).join(' ')])
-  if (opens.length) rows.push(['關掉後解鎖', opens.map(link).join(' ')])
-  if (issue.labels.length) {
-    rows.push(['標籤', issue.labels.map((l) => `<span class="label">${esc(l)}</span>`).join('')])
+  if (issue.author) rows.push([t('detail.author'), esc(issue.author)])
+  if (issue.parent !== null) rows.push([t('detail.parent'), link(issue.parent)])
+  if (issue.waitingFor.length) {
+    rows.push([t('detail.waiting'), issue.waitingFor.map(link).join(' ')])
   }
-  if (issue.assignees.length) rows.push(['接手', esc(issue.assignees.join(', '))])
+  if (settled.length) rows.push([t('detail.settled'), settled.map(link).join(' ')])
+  if (opens.length) rows.push([t('detail.unlocks'), opens.map(link).join(' ')])
+  if (issue.labels.length) {
+    rows.push([
+      t('detail.labels'),
+      issue.labels.map((l) => `<span class="label">${esc(l)}</span>`).join(''),
+    ])
+  }
+  if (issue.assignees.length) {
+    rows.push([t('detail.assignees'), esc(issue.assignees.join(', '))])
+  }
   return (
     `<h3><span class="num">#${issue.number}</span>${esc(issue.title)}</h3>` +
-    `<a class="open" href="${esc(issue.url)}" target="_blank" rel="noopener">在 GitHub 開啟 ↗</a>` +
-    `<dl class="rows">${rows.map(([dt, dd]) => `<dt>${dt}</dt><dd>${dd}</dd>`).join('')}</dl>`
+    `<a class="open" href="${esc(issue.url)}" target="_blank" rel="noopener">${esc(
+      t('detail.open'),
+    )}</a>` +
+    `<dl class="rows">${rows.map(([dt, dd]) => `<dt>${esc(dt)}</dt><dd>${dd}</dd>`).join('')}</dl>`
   )
 }
 
@@ -511,7 +660,7 @@ function renderDetail(number: number | undefined): void {
   const issue = number === undefined ? undefined : issueAt(number)
   if (!issue) {
     detail.dataset.status = ''
-    detail.innerHTML = '<h3>沒有 issue</h3>'
+    detail.innerHTML = `<h3>${esc(t('detail.empty'))}</h3>`
     return
   }
   detail.dataset.status = issue.status
@@ -635,7 +784,9 @@ function rowHTML(row: Row): string {
       ? ` title="${esc(issue.waitingFor.map(hash).join(' '))}"`
       : ''
   const waits = issue.waitingFor.length
-    ? `<span class="waits"${waitsTitle}>等 ${blockers(issue.waitingFor)}</span>`
+    ? `<span class="waits"${waitsTitle}>${t('row.waits', {
+        list: blockers(issue.waitingFor),
+      })}</span>`
     : ''
   return (
     `<div class="row" tabindex="0" data-status="${issue.status}" data-number="${issue.number}"${parent}${kids}>` +
@@ -651,7 +802,9 @@ function rowHTML(row: Row): string {
 
 function renderRows(): void {
   const rows = rowOrder()
-  pick('list-sub').textContent = `${rows.filter((r) => !r.issue.isParent).length} 張`
+  const shown = rows.filter((r) => !r.issue.isParent).length
+  pick('list-title').textContent = t('list.title')
+  pick('list-sub').textContent = t('list.count', { n: shown })
   rowsEl.innerHTML = rows.map(rowHTML).join('')
   // 主票的收合鈕：innerHTML 重建過，鈕要重新放進去。
   for (const row of rowsEl.querySelectorAll<HTMLElement>('.row[data-haskids="true"]')) {
@@ -661,9 +814,11 @@ function renderRows(): void {
 
 function renderTabs(): void {
   const tabs = pick('tabs')
+  tabs.innerHTML = ''
+  tabs.setAttribute('aria-label', t('tabs.aria'))
   const defs: [Status | 'all', string, number][] = [
-    ['all', '全部', work.length],
-    ...STATUS_ORDER.map((s) => [s, STATUS_LABEL[s], counts[s]] as [Status, string, number]),
+    ['all', t('tabs.all'), work.length],
+    ...STATUS_ORDER.map((s) => [s, statusLabel(s), counts[s]] as [Status, string, number]),
   ]
   for (const [key, label, count] of defs) {
     const tab = document.createElement('button')
@@ -742,7 +897,7 @@ function legacyCopy(text: string): Promise<void> {
   box.select()
   const ok = document.execCommand('copy')
   box.remove()
-  return ok ? Promise.resolve() : Promise.reject(new Error('複製失敗'))
+  return ok ? Promise.resolve() : Promise.reject(new Error('execCommand copy failed'))
 }
 
 function copyText(text: string): Promise<void> {
@@ -763,12 +918,12 @@ function handleCopy(button: HTMLElement): void {
   copyText(command).then(
     () => {
       button.dataset.copied = 'true'
-      flash(label, '已複製', 1200, () => {
+      flash(label, t('copy.done'), 1200, () => {
         delete button.dataset.copied
         label.textContent = was
       })
     },
-    () => flash(label, '複製不了', 1600, () => (label.textContent = was)),
+    () => flash(label, t('copy.fail'), 1600, () => (label.textContent = was)),
   )
 }
 
@@ -816,10 +971,21 @@ document.addEventListener('keydown', (ev) => {
 
 // ---- 起動 ----
 
-renderHeader()
-renderGroups()
-renderTabs()
-renderRows()
-onFold.push(paintFolded)
-paintFolded()
-renderDetail(defaultPick())
+/**
+ * 整頁重畫。換語言就是走這裡——每一段都會先清掉自己那一塊，所以重畫一次不會留下上一種語言的
+ * 殘骸。選取與收合是狀態不是文字，重畫時保留。
+ */
+function render(): void {
+  onFold.length = 0
+  renderHeader()
+  renderGroups()
+  renderTabs()
+  renderRows()
+  paintFolded()
+  // paintSelection 收尾會畫詳細，沒有選取時它自己退回預設那一張。
+  paintSelection()
+}
+
+setLocale(readLocale())
+mountLangPicker()
+render()

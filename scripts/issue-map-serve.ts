@@ -47,7 +47,8 @@ async function page(): Promise<string> {
   // 樣板是 artifact 用的片段；本機直接看要補上完整文件與 charset。
   const head =
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-  return `<!doctype html><html lang="zh-Hant"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
+  // `lang` 是預設語言；頁面上換語言時畫面那一支會改掉 `documentElement.lang`。
+  return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
 }
 
 const server = Bun.serve({

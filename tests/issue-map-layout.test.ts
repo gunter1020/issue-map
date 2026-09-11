@@ -29,7 +29,7 @@ function issue(number: number, blockedBy: number[] = []): MapIssue {
     blockedBy,
     waitingFor: blockedBy,
     status: 'blocked',
-    nextStep: '',
+    nextStep: { kind: 'none' },
     isParent: false,
   }
 }

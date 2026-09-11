@@ -33,6 +33,7 @@ import {
   criticalPathOf,
   groupsOf,
   type MapIssue,
+  type NextStep,
   type Snapshot,
   type Status,
 } from './issue-map-model.ts'
@@ -228,16 +229,23 @@ function describeIssue(raw: Issue, context: Context): MapIssue {
     return waitingFor.length ? 'blocked' : 'ready'
   }
 
-  function nextStepOf(status: Status): string {
-    if (status === 'done') return ''
-    if (status === 'triage') return CONFIG.triageCommand
-    if (status === 'active') return assignees.join(', ') || CONFIG.active[0] || '進行中'
+  /** 只算出「是哪一種下一步」。句子是頁面的事，在 `issue-map-i18n.ts` 依語言組出來。 */
+  function nextStepOf(status: Status): NextStep {
+    if (status === 'done') return { kind: 'none' }
+    if (status === 'triage') return { kind: 'command', command: CONFIG.triageCommand }
+    if (status === 'active') {
+      // 沒有 assignee 但掛了 active 標籤時，能講的就只有那個標籤名。
+      const label = CONFIG.active[0]
+      return { kind: 'active', who: assignees.length ? assignees : label ? [label] : [] }
+    }
     if (isParent) {
       const left = context.openChildren.get(raw.number) ?? 0
-      return left ? `等 ${left} 張子票關完` : '子票全關，可以關掉了'
+      return left ? { kind: 'waitChildren', count: left } : { kind: 'parentReady' }
     }
-    if (status === 'blocked') return `等 ${waitingFor.map((number) => `#${number}`).join(' ')}`
-    return has(CONFIG.human) ? '人工實作' : CONFIG.implementCommand
+    if (status === 'blocked') return { kind: 'waitIssues', issues: waitingFor }
+    return has(CONFIG.human)
+      ? { kind: 'manual' }
+      : { kind: 'command', command: CONFIG.implementCommand }
   }
 
   const status = statusOf()

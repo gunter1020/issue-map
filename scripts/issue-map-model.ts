@@ -13,13 +13,21 @@ export type Status = 'ready' | 'active' | 'blocked' | 'triage' | 'done'
 /** 五個狀態的顯示順序，也是清單的排序權重。 */
 export const STATUS_ORDER: readonly Status[] = ['ready', 'active', 'blocked', 'triage', 'done']
 
-export const STATUS_LABEL: Readonly<Record<Status, string>> = {
-  ready: '可接手',
-  active: '進行中',
-  blocked: '阻擋中',
-  triage: '待 triage',
-  done: '已完成',
-}
+/**
+ * 下一步。**這裡只放事實，不放句子**——「等 3 張子票關完」這種話由 `issue-map-i18n.ts` 依當下
+ * 語言組出來。快照裡存中文句子的話，換語言就得重抓一次 GitHub。
+ *
+ * `command` 的內容是設定（`/implement`、`/triage`），不是文案，所以照原字帶著走。
+ */
+export type NextStep =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'command'; readonly command: string }
+  | { readonly kind: 'manual' }
+  /** 有人接手。`who` 是 assignee，沒有 assignee 但掛了 active 標籤時是那個標籤名。 */
+  | { readonly kind: 'active'; readonly who: readonly string[] }
+  | { readonly kind: 'waitIssues'; readonly issues: readonly number[] }
+  | { readonly kind: 'waitChildren'; readonly count: number }
+  | { readonly kind: 'parentReady' }
 
 /** 頁面吃的形狀。這裡是它唯一的定義。 */
 export type MapIssue = {
@@ -37,17 +45,28 @@ export type MapIssue = {
   /** 還開著的阻擋者，就是實際的閘門。 */
   readonly waitingFor: readonly number[]
   readonly status: Status
-  /** 白話的下一步，已完成的票是空字串。 */
-  readonly nextStep: string
+  /** 下一步。句子在 i18n 那一層才組出來。 */
+  readonly nextStep: NextStep
   /** 有子票的票。它自己不做事，等子票全關。 */
   readonly isParent: boolean
 }
+
+/**
+ * 一群票的名字。`spec` 帶的是主票標題——那是真資料，不翻；另外三種是頁面自己的分類，翻譯在
+ * i18n 那一層。
+ */
+export type GroupName =
+  | { readonly kind: 'spec'; readonly title: string }
+  /** 主票沒被帶進快照，只好用票號稱呼這一群。 */
+  | { readonly kind: 'orphan'; readonly parent: number }
+  | { readonly kind: 'linked' }
+  | { readonly kind: 'island' }
 
 /** 畫在同一張圖上的一群票。 */
 export type Group = {
   /** 有 parent 的群就是那張主票；沒有的是「其他依賴鏈」與「獨立票」這兩種。 */
   readonly parent: number | null
-  readonly title: string
+  readonly name: GroupName
   readonly members: readonly number[]
 }
 
@@ -81,7 +100,8 @@ export function groupsOf(issues: readonly MapIssue[]): Group[] {
   const groups: Group[] = []
   for (const [parent, members] of byParent) {
     const spec = issues.find((issue) => issue.number === parent)
-    groups.push({ parent, title: spec?.title ?? `#${parent} 的子票`, members })
+    const name: GroupName = spec ? { kind: 'spec', title: spec.title } : { kind: 'orphan', parent }
+    groups.push({ parent, name, members })
   }
 
   const grouped = new Set([...byParent.values()].flat())
@@ -92,8 +112,8 @@ export function groupsOf(issues: readonly MapIssue[]): Group[] {
     const hasEdge = blocking.has(issue.number) || issue.blockedBy.some((n) => known.has(n))
     ;(hasEdge ? linked : alone).push(issue.number)
   }
-  if (linked.length) groups.push({ parent: null, title: '其他依賴鏈', members: linked })
-  if (alone.length) groups.push({ parent: null, title: '獨立票', members: alone })
+  if (linked.length) groups.push({ parent: null, name: { kind: 'linked' }, members: linked })
+  if (alone.length) groups.push({ parent: null, name: { kind: 'island' }, members: alone })
   return groups
 }
 

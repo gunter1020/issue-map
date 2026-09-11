@@ -20,6 +20,7 @@
   },
   "files": [
     "scripts/issue-map.ts",
+    "scripts/issue-map-i18n.ts",
     "scripts/issue-map-model.ts",
     "scripts/issue-map-page.ts",
     "scripts/issue-map-serve.ts",
