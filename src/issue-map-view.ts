@@ -66,7 +66,13 @@ const MAX_MAPS = 20
 /** 一群票對應的一張圖。`members` 是票，`track` 是這一組的線色。 */
 export type Shown = { group: Group; members: readonly MapIssue[]; track: string }
 
-export type Row = { issue: MapIssue; parent: number | null; hasKids: boolean }
+/** 清單上的一列。`parent` 是直屬主票，`depth` 是它在 parent 樹裡的層數（頂層是 0）。 */
+export type Row = {
+  issue: MapIssue
+  parent: number | null
+  depth: number
+  hasKids: boolean
+}
 
 export type Filter = Status | 'all'
 
@@ -536,42 +542,66 @@ export function viewOf(snapshot: Snapshot) {
 
   // ---- 清單 ----
 
-  /** 主票在前、它的子票跟在後面。篩選時主票只要有子票入選就留著當標頭。 */
+  /**
+   * 主票在前、它的子票跟在後面。
+   *
+   * `parent` 是一個指標欄位，語意上就是任意深度的森林，所以這裡真的把它折成森林再深度優先
+   * 展平——**每張票只會出現一次**。把它當成「有沒有 parent 就是 root」的兩層結構、再補一條
+   * 「把漏掉的主票撿回來」的例外的話，三層鏈的中間那張會同時是子票又是主票，渲染成兩列。
+   *
+   * 篩選時祖先只要有後代入選就留著當標頭，否則子票沒了歸屬。
+   */
   const rowOrder = (filter: Filter): Row[] => {
-    const pass = new Set(
-      issues.filter((i) => filter === 'all' || i.status === filter).map((i) => i.number),
-    )
     const kids = new Map<number, MapIssue[]>()
     const roots: MapIssue[] = []
     for (const issue of issues) {
+      // 指向沒被帶進快照的 parent，就當它自己是一枝的頂端。
       const parent = issue.parent !== null && byNumber.has(issue.parent) ? issue.parent : null
       if (parent === null) {
-        if (pass.has(issue.number)) roots.push(issue)
+        roots.push(issue)
         continue
       }
-      if (!pass.has(issue.number)) continue
       const siblings = kids.get(parent) ?? []
       siblings.push(issue)
       kids.set(parent, siblings)
     }
-    // 有子票入選但自己沒入選的主票，仍要出現，否則子票就沒了歸屬。
-    for (const parent of kids.keys()) {
-      const issue = issueAt(parent)
-      if (issue && !roots.includes(issue)) roots.push(issue)
+
+    const hits = (issue: MapIssue): boolean => filter === 'all' || issue.status === filter
+    const rows: Row[] = []
+    const seen = new Set<number>()
+
+    /** 展平這一枝，回傳它有沒有東西入選。整枝都沒入選就把自己也收回去。 */
+    const walk = (issue: MapIssue, parent: number | null, depth: number): boolean => {
+      // parent 成環時止血：資料不該有環，真的有就讓它在這裡停下來而不是無限遞迴。
+      if (seen.has(issue.number)) return false
+      seen.add(issue.number)
+      const at = rows.length
+      rows.push({ issue, parent, depth, hasKids: false })
+      let keptChild = false
+      for (const child of (kids.get(issue.number) ?? []).sort(byStatusThenNumber)) {
+        keptChild = walk(child, issue.number, depth + 1) || keptChild
+      }
+      if (!keptChild && !hits(issue)) {
+        // 整枝沒人入選，連自己一起收回去——沒有後代被留下，這裡只會砍到自己那一列。
+        rows.length = at
+        return false
+      }
+      rows[at] = { issue, parent, depth, hasKids: keptChild }
+      return true
     }
 
-    const rows: Row[] = []
-    for (const root of roots.sort(byStatusThenNumber)) {
-      const children = (kids.get(root.number) ?? []).sort(byStatusThenNumber)
-      rows.push({ issue: root, parent: null, hasKids: children.length > 0 })
-      for (const child of children) rows.push({ issue: child, parent: root.number, hasKids: false })
-    }
+    for (const root of [...roots].sort(byStatusThenNumber)) walk(root, null, 0)
+    // 成環的票進不了任何一枝，但它們還是得看得見。
+    const stranded = issues.filter((issue) => !seen.has(issue.number)).sort(byStatusThenNumber)
+    for (const issue of stranded) walk(issue, null, 0)
     return rows
   }
 
   const rowHTML = (row: Row): string => {
     const issue = row.issue
-    const parent = row.parent === null ? '' : ` data-parent="${row.parent}"`
+    // 縮排的級距在 CSS 裡，這裡只說第幾層。
+    const parent =
+      row.parent === null ? '' : ` data-parent="${row.parent}" style="--depth:${row.depth}"`
     const kids = row.hasKids ? ' data-haskids="true"' : ''
     const slot = row.hasKids ? `<span class="fold-slot">${foldButtonHTML(issue.number)}</span>` : ''
     const waitsTitle =

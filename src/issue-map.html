@@ -714,8 +714,9 @@
   .row[data-haskids='true'] {
     background: var(--paper);
   }
+  /* 縮排跟著 parent 樹的層數走，級距只有這一份。 */
   .row[data-parent] {
-    margin-left: 28px;
+    margin-left: calc(var(--depth, 1) * 28px);
   }
 
   .row .id {

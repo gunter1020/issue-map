@@ -113,6 +113,22 @@ function isFolded(parent: number): boolean {
   return folded.has(String(parent))
 }
 
+/**
+ * 掛在某張票底下的東西該不該藏起來。
+ *
+ * 看的是**整條祖先鏈**，不只直屬主票——三層的鏈收起最上面那張時，第三層的 `data-parent` 指的
+ * 是第二層，只比對直屬的話它會單獨留在畫面上。
+ */
+function foldedAnywhere(parent: number): boolean {
+  const seen = new Set<number>()
+  for (let at: number | null = parent; at !== null && !seen.has(at);) {
+    if (isFolded(at)) return true
+    seen.add(at)
+    at = view.issueAt(at)?.parent ?? null
+  }
+  return false
+}
+
 function setFolded(parent: number, shut: boolean): void {
   if (shut) folded.add(String(parent))
   else folded.delete(String(parent))
@@ -126,7 +142,7 @@ function setFolded(parent: number, shut: boolean): void {
  */
 function paintFolded(): void {
   for (const node of document.querySelectorAll<HTMLElement>('[data-parent]')) {
-    node.hidden = isFolded(Number(node.dataset.parent))
+    node.hidden = foldedAnywhere(Number(node.dataset.parent))
   }
   for (const section of document.querySelectorAll<HTMLElement>('section.group[data-fold]')) {
     section.dataset.folded = String(isFolded(Number(section.dataset.fold)))

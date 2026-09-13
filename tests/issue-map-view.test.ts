@@ -137,6 +137,60 @@ describe('清單', () => {
     expect(html).toContain('data-fold-for="100"')
   })
 
+  /**
+   * 守的是「一張票在清單上只出現一次，不管 parent 鏈有多深」。
+   *
+   * 壞了會怎樣：實際踩到過——把清單當成「有沒有 parent 就是 root」的兩層結構、再補一條「把漏掉
+   * 的主票撿回來」的例外，三層鏈的中間那張會同時符合兩邊，渲染成兩列。兩列都帶同一個
+   * `data-number`，選取時兩列一起亮、就地展開只開得到其中一列，張數也跟著多算。
+   */
+  test('三層 parent 鏈裡每張票只出現一次', () => {
+    const issues = [
+      issue(1, { isParent: true, status: 'blocked' }),
+      issue(2, { parent: 1, isParent: true, status: 'blocked' }),
+      issue(3, { parent: 2 }),
+    ]
+    const html = viewOf(snapshotOf(issues)).rowsHTML('all').html
+    const order = [...html.matchAll(/class="row"[^>]*data-number="(\d+)"/g)].map((m) => m[1])
+
+    expect(order).toEqual(['1', '2', '3'])
+    // 每一層都掛在自己的直屬主票底下，縮排跟著層數走。
+    expect(html).toContain('data-parent="1" style="--depth:1"')
+    expect(html).toContain('data-parent="2" style="--depth:2"')
+  })
+
+  /**
+   * 守的是「篩選掉的祖先只要底下還有票入選就留著當標頭」，而且一樣只留一份。
+   *
+   * 壞了會怎樣：第三層的票入選、上面兩層沒入選，那張票就會浮在清單上沒有歸屬；或是為了把它
+   * 的祖先補回來而重複渲染。
+   */
+  test('只有最深那張入選時，兩層祖先各留一份當標頭', () => {
+    const issues = [
+      issue(1, { isParent: true, status: 'blocked' }),
+      issue(2, { parent: 1, isParent: true, status: 'blocked' }),
+      issue(3, { parent: 2, status: 'ready' }),
+    ]
+    const html = viewOf(snapshotOf(issues)).rowsHTML('ready').html
+    const order = [...html.matchAll(/class="row"[^>]*data-number="(\d+)"/g)].map((m) => m[1])
+
+    expect(order).toEqual(['1', '2', '3'])
+  })
+
+  /**
+   * 守的是「parent 成環也要畫得出清單」。
+   *
+   * 壞了會怎樣：環裡的票沒有任何一張是 root，深度優先如果只從 root 進入，它們會整批消失；沒有
+   * 止血的話則是無限遞迴，整頁產不出來。
+   */
+  test('parent 成環時票還是看得到，而且不會無限遞迴', () => {
+    const issues = [issue(1, { parent: 2 }), issue(2, { parent: 1 })]
+    const html = viewOf(snapshotOf(issues)).rowsHTML('all').html
+    const order = [...html.matchAll(/class="row"[^>]*data-number="(\d+)"/g)].map((m) => m[1])
+
+    expect(order).toEqual(['1', '2'])
+  })
+
   /** 主票不算進「幾張票」——它自己不做事。 */
   test('主票不計入張數', () => {
     const issues = [issue(100, { isParent: true }), issue(101, { parent: 100 })]
