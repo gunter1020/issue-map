@@ -35,7 +35,7 @@ function snapshotOf(issues: MapIssue[], groups: Snapshot['groups'] = []): Snapsh
   return {
     generatedAt: '2026-01-01T00:00:00.000Z',
     repo: 'owner/repo',
-    labels: { ready: [], unready: [] },
+    labels: { ready: [], unready: [], gated: false },
     groups,
     criticalPath: 1,
     issues,
@@ -195,6 +195,30 @@ describe('清單', () => {
   test('主票不計入張數', () => {
     const issues = [issue(100, { isParent: true }), issue(101, { parent: 100 })]
     expect(viewOf(snapshotOf(issues)).rowsHTML('all').shown).toBe(1)
+  })
+})
+
+describe('頁尾', () => {
+  /**
+   * 守的是「頁尾講的閘門就是狀態機這一次套用的閘門」。
+   *
+   * 壞了會怎樣：字彙一律有預設值、永遠非空，所以拿它的長度去推閘門開著沒有的話，這句話永遠
+   * 印成「沒掛角色標籤等於未定案」。而 repo 還沒導入標籤時狀態機並沒有套閘門，票是照前置判成
+   * 可動的——頁面於是一邊說可以動、一邊說它未定案。
+   */
+  test('閘門沒套用時說的是沒有在用 triage 標籤', () => {
+    const base = snapshotOf([issue(1)])
+    const off = viewOf({
+      ...base,
+      labels: { ready: ['ready-for-agent'], unready: ['needs-triage'], gated: false },
+    }).footerHTML()
+    const on = viewOf({
+      ...base,
+      labels: { ready: ['ready-for-agent'], unready: ['needs-triage'], gated: true },
+    }).footerHTML()
+
+    expect(off.config).not.toContain('ready-for-agent')
+    expect(on.config).toContain('ready-for-agent')
   })
 })
 

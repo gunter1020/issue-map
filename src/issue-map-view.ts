@@ -240,7 +240,8 @@ export function viewOf(snapshot: Snapshot) {
       }),
       // 標籤名是 repo 給的字，逃脫過才進 innerHTML。
       config: esc(
-        vocab.ready.length
+        // 照快照記下的閘門說話。字彙一律有預設值、永遠非空，拿它的長度判斷的話這句必然說謊。
+        vocab.gated
           ? t('foot.vocab', {
               ready: vocab.ready.join(t('join.or')),
               unready: vocab.unready.join(t('join.slash')),

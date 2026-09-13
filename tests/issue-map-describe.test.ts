@@ -32,7 +32,7 @@ function snapshot(statuses: readonly Status[], generatedAt = AT): Snapshot {
   return {
     generatedAt,
     repo: 'gunter1020/issue-map',
-    labels: { ready: ['ready-for-agent'], unready: ['needs-triage'] },
+    labels: { ready: ['ready-for-agent'], unready: ['needs-triage'], gated: true },
     groups: [],
     criticalPath: 0,
     issues: statuses.map((status, index) => issue(index + 1, status)),

@@ -312,7 +312,8 @@ export function takeSnapshot(): Snapshot {
   return {
     generatedAt: new Date().toISOString(),
     repo: nameWithOwner,
-    labels: { ready: CONFIG.ready, unready: CONFIG.unready },
+    // 閘門開著沒有一起寫進去：頁尾要說的就是這一次的判定，不能自己從字彙長度重猜。
+    labels: { ready: CONFIG.ready, unready: CONFIG.unready, gated: triaged },
     groups: groupsOf(issues),
     criticalPath: criticalPathOf(issues),
     issues,

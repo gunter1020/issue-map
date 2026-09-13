@@ -72,8 +72,17 @@ export type Group = {
 export type Snapshot = {
   readonly generatedAt: string
   readonly repo: string
-  /** 這一次實際生效的標籤字彙。圖例照它寫，不然改了設定圖例就會說謊。 */
-  readonly labels: { readonly ready: readonly string[]; readonly unready: readonly string[] }
+  /**
+   * 這一次實際生效的標籤字彙與閘門。圖例照它寫，不然改了設定圖例就會說謊。
+   *
+   * `gated` 是**狀態機當下真的有沒有把這些標籤當閘門**。字彙本身一律有預設值、永遠非空，拿
+   * 它的長度去推閘門開著沒有的話，repo 還沒導入標籤時票會判成可動，頁尾卻說沒掛標籤等於未定案。
+   */
+  readonly labels: {
+    readonly ready: readonly string[]
+    readonly unready: readonly string[]
+    readonly gated: boolean
+  }
   readonly groups: readonly Group[]
   /** 最長的一條依序未完成鏈，也就是最少要幾輪。 */
   readonly criticalPath: number
@@ -87,7 +96,7 @@ export type Snapshot = {
 export const EMPTY_SNAPSHOT: Snapshot = {
   generatedAt: '',
   repo: '',
-  labels: { ready: [], unready: [] },
+  labels: { ready: [], unready: [], gated: false },
   groups: [],
   criticalPath: 0,
   issues: [],
