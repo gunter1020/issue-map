@@ -43,10 +43,25 @@ function openInBrowser(url: string): void {
   }
 }
 
+/**
+ * 同時抵達的請求共用同一次抓取。
+ *
+ * 一次重新整理按兩下、或開著兩個分頁，本來會各自跑一趟完整的 GitHub 抓取；它們要的是同一刻的
+ * 狀態，讓後到的等前一趟就好。抓完就清掉，所以「每次重新整理都是最新的」沒有變。
+ */
+let inFlight: Promise<string> | null = null
+
 async function page(): Promise<string> {
-  const snapshot = takeSnapshot()
+  const snapshot = await takeSnapshot()
   console.log(describe(snapshot))
   return renderDocument(snapshot)
+}
+
+function pageShared(): Promise<string> {
+  inFlight ??= page().finally(() => {
+    inFlight = null
+  })
+  return inFlight
 }
 
 const server = Bun.serve({
@@ -55,7 +70,7 @@ const server = Bun.serve({
     const { pathname } = new URL(request.url)
     if (pathname !== '/') return new Response(null, { status: 404 })
     try {
-      return new Response(await page(), {
+      return new Response(await pageShared(), {
         headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
       })
     } catch (error) {

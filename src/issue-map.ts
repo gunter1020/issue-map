@@ -13,7 +13,7 @@
  * 環境變數與設計決定見 README；移植要調的東西在底下的 `CONFIG`。
  */
 
-import { spawnSync } from 'bun'
+import { spawn } from 'bun'
 
 import { t } from './issue-map-i18n.ts'
 import {
@@ -91,9 +91,6 @@ interface Page<T> {
   nodes: T[]
 }
 
-/** 票號查不到（號碼其實是 PR，或那張票不存在）時 GraphQL 回 null。 */
-type MaybeIssue = RawIssue | null
-
 const ISSUE_FIELDS = `
   number title state url body closedAt
   author { login }
@@ -135,8 +132,11 @@ export function dataOrThrow<T>(stdout: string, stderr: string): T {
  *
  * 票號是我們自己從前一次結果拿到的整數，直接組進查詢字串；只有 cursor 走變數——它是 API 給的
  * 不透明字串，沒有理由自己去逃脫它。
+ *
+ * **非同步**：互不相干的查詢要能一起送，同步等一個子行程就不可能並行；而 server 那邊同步等
+ * 還會把整條 event loop 卡住，第二個瀏覽器分頁得等第一個抓完才拿得到回應。
  */
-function run<T>(query: string, variables: Record<string, string> = {}): T {
+async function run<T>(query: string, variables: Record<string, string> = {}): Promise<T> {
   // `{owner}`／`{repo}` 由 gh 從 cwd 的 git 推斷，`GH_REPO` 可以蓋過去。
   const args = [
     'gh',
@@ -150,8 +150,35 @@ function run<T>(query: string, variables: Record<string, string> = {}): T {
     'repo={repo}',
   ]
   for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
-  const result = spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
-  return dataOrThrow<T>(result.stdout.toString(), result.stderr.toString())
+  const proc = spawn(args, { stdout: 'pipe', stderr: 'pipe' })
+  // 兩條管子一起收：先讀完一條再讀另一條的話，另一條寫滿緩衝就會卡住整個行程。
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  await proc.exited
+  return dataOrThrow<T>(stdout, stderr)
+}
+
+/**
+ * 一路翻到底。`pageAt` 拿 cursor 去要一頁，回傳 `null` 代表那個東西不存在。
+ *
+ * 分頁的終止條件只有這一份——各寫一份的話兩邊會漂移，而漂移的那一邊要真的打 GitHub 才看得出來。
+ */
+async function collect<T>(
+  pageAt: (after: string | null) => Promise<Page<T> | null>,
+  from: string | null = null,
+): Promise<T[]> {
+  const all: T[] = []
+  let after = from
+  for (;;) {
+    const page = await pageAt(after)
+    if (!page) break
+    all.push(...page.nodes)
+    if (!page.pageInfo.hasNextPage || !page.pageInfo.endCursor) break
+    after = page.pageInfo.endCursor
+  }
+  return all
 }
 
 const OPEN_QUERY = `
@@ -166,27 +193,21 @@ const OPEN_QUERY = `
   }`
 
 /** open issue 全部都要，所以一路翻到底——票超過一頁不是錯誤，是常態。 */
-function fetchOpen(): { nameWithOwner: string; open: RawIssue[] } {
+async function fetchOpen(): Promise<{ nameWithOwner: string; open: RawIssue[] }> {
   type Result = { repository: { nameWithOwner: string; issues: Page<RawIssue> } }
-  const open: RawIssue[] = []
   let nameWithOwner = ''
-  let after: string | null = null
-  for (;;) {
-    const variables: Record<string, string> = after ? { after } : {}
-    const { repository } = run<Result>(OPEN_QUERY, variables)
+  const open = await collect<RawIssue>(async (after) => {
+    const { repository } = await run<Result>(OPEN_QUERY, after ? { after } : {})
     nameWithOwner = repository.nameWithOwner
-    open.push(...repository.issues.nodes)
-    const { hasNextPage, endCursor } = repository.issues.pageInfo
-    if (!hasNextPage || !endCursor) break
-    after = endCursor
-  }
+    return repository.issues
+  })
   return { nameWithOwner, open }
 }
 
 /** alias 不能以數字開頭，所以票號前面補一個 `i`。 */
 const alias = (number: number) => `i${number}`
 
-function chunks<T>(items: readonly T[], size: number): T[][] {
+export function chunks<T>(items: readonly T[], size: number): T[][] {
   const batches: T[][] = []
   for (let index = 0; index < items.length; index += size) {
     batches.push(items.slice(index, index + size))
@@ -194,25 +215,46 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
   return batches
 }
 
-/** 指名要哪幾張票，一批 alias 問完。查不到的就當沒有。 */
-function fetchByNumber(numbers: readonly number[]): RawIssue[] {
-  type Result = { repository: Record<string, MaybeIssue> }
-  const found: RawIssue[] = []
-  for (const batch of chunks(numbers, BATCH)) {
-    const query = `
+/**
+ * 一批 alias 指名要哪幾個票號底下的 `selection`。
+ *
+ * 組查詢、批次切分、依票號取回——這三件事只有這一份。批次之間互不相干，所以一起送；查不到的
+ * 票號不會出現在結果裡（GraphQL 那個 alias 回 null，理由見 `dataOrThrow`）。
+ */
+export function aliasedQuery(batch: readonly number[], selection: string): string {
+  return `
   query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
-      ${batch.map((number) => `${alias(number)}: issue(number: ${number}) { ${ISSUE_FIELDS} }`).join('\n      ')}
+      ${batch.map((number) => `${alias(number)}: issue(number: ${number}) { ${selection} }`).join('\n      ')}
     }
   }`
-    const { repository } = run<Result>(query)
+}
+
+async function byAlias<T>(numbers: readonly number[], selection: string): Promise<Map<number, T>> {
+  type Result = { repository: Record<string, T | null> }
+  const batches = chunks(numbers, BATCH)
+  const answers = await Promise.all(
+    batches.map(async (batch) => (await run<Result>(aliasedQuery(batch, selection))).repository),
+  )
+  const found = new Map<number, T>()
+  batches.forEach((batch, index) => {
+    const repository = answers[index]
     for (const number of batch) {
-      const issue = repository[alias(number)]
-      if (issue) found.push(issue)
+      const node = repository?.[alias(number)]
+      if (node) found.set(number, node)
     }
-  }
+  })
   return found
 }
+
+/** 指名要哪幾張票的完整欄位。查不到的就當沒有。 */
+async function fetchByNumber(numbers: readonly number[]): Promise<RawIssue[]> {
+  return [...(await byAlias<RawIssue>(numbers, ISSUE_FIELDS)).values()]
+}
+
+/** 子票這一趟只問票號與狀態，完整欄位留給指名去要的那一趟。 */
+const CHILD_FIELDS = 'number state'
+export type ChildState = { readonly number: number; readonly state: IssueState }
 
 function childrenQuery(parent: number): string {
   return `
@@ -221,7 +263,7 @@ function childrenQuery(parent: number): string {
       issue(number: ${parent}) {
         subIssues(first: ${PAGE}, after: $after) {
           pageInfo { hasNextPage endCursor }
-          nodes { ${ISSUE_FIELDS} }
+          nodes { ${CHILD_FIELDS} }
         }
       }
     }
@@ -229,42 +271,39 @@ function childrenQuery(parent: number): string {
 }
 
 /**
- * 拿這些 parent 底下的子票，為的是把同一組裡**已完成**的兄弟票撈出來當進度。
+ * 這些主票底下有哪些子票、各自是開是關。為的是把同一組裡**已完成**的兄弟票撈出來當進度。
+ *
+ * **只問票號與狀態。** `subIssues` 沒有 `states:` 可以篩，一定會連開著的一起回來，而開著的
+ * 兄弟本來就在 open 那包；關掉的要的是完整欄位，那一趟跟其他指名去要的票一起走。整包完整欄位
+ * 抓回來再丟掉的話，用原生 sub-issue 的 repo 每次都在重抓自己已經有的東西。
  *
  * 只有 GitHub 原生 sub-issue 有值；用內文 `## Parent` 慣例的 repo 這裡是空的（檔頭說的那個
- * 代價）。open 的兄弟不必靠這裡，它們本來就在 open 那包。
+ * 代價）。
  */
-function fetchChildren(parents: readonly number[]): RawIssue[] {
-  type Batch = { repository: Record<string, { subIssues: Page<RawIssue> } | null> }
-  type More = { repository: { issue: { subIssues: Page<RawIssue> } | null } }
-  const children: RawIssue[] = []
-  for (const batch of chunks(parents, BATCH)) {
-    const query = `
-  query($owner: String!, $repo: String!) {
-    repository(owner: $owner, name: $repo) {
-      ${batch
-        .map(
-          (number) => `${alias(number)}: issue(number: ${number}) {
-        subIssues(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { ${ISSUE_FIELDS} } } }`,
-        )
-        .join('\n      ')}
-    }
-  }`
-    const { repository } = run<Batch>(query)
-    for (const number of batch) {
-      const page = repository[alias(number)]?.subIssues
-      if (!page) continue
-      children.push(...page.nodes)
-      // 子票破百的 parent 很罕見，就讓它自己續抓，不為了它把整批都變成分頁查詢。
-      let after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
-      while (after) {
-        const next = run<More>(childrenQuery(number), { after }).repository.issue?.subIssues
-        if (!next) break
-        children.push(...next.nodes)
-        after = next.pageInfo.hasNextPage ? next.pageInfo.endCursor : null
-      }
-    }
+async function fetchChildren(parents: readonly number[]): Promise<ChildState[]> {
+  type More = { repository: { issue: { subIssues: Page<ChildState> } | null } }
+  const first = await byAlias<{ subIssues: Page<ChildState> }>(
+    parents,
+    `subIssues(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { ${CHILD_FIELDS} } }`,
+  )
+
+  const children: ChildState[] = []
+  // 子票破百的 parent 很罕見，就讓它自己從上一頁的尾巴續抓，不為了它把整批都變成分頁查詢。
+  const rest: Promise<ChildState[]>[] = []
+  for (const [parent, node] of first) {
+    children.push(...node.subIssues.nodes)
+    const { hasNextPage, endCursor } = node.subIssues.pageInfo
+    if (!hasNextPage || !endCursor) continue
+    rest.push(
+      collect<ChildState>(
+        async (after) =>
+          (await run<More>(childrenQuery(parent), after ? { after } : {})).repository.issue
+            ?.subIssues ?? null,
+        endCursor,
+      ),
+    )
   }
+  for (const more of await Promise.all(rest)) children.push(...more)
   return children
 }
 
@@ -309,13 +348,17 @@ export function keptClosed(open: readonly Issue[], fetched: readonly RawIssue[])
     .map(withParent)
 }
 
-export function takeSnapshot(): Snapshot {
-  const { nameWithOwner, open: rawOpen } = fetchOpen()
+export async function takeSnapshot(): Promise<Snapshot> {
+  const { nameWithOwner, open: rawOpen } = await fetchOpen()
   const open = rawOpen.map(withParent)
   const wanted = wantedClosed(open)
-  const fetched = [...fetchByNumber(wanted.numbers), ...fetchChildren(wanted.parents)]
 
-  return assemble(nameWithOwner, open, keptClosed(open, fetched))
+  // 先用最便宜的一趟問出子票的狀態，再讓完整欄位只抓一次、只抓真的要留下的那些。
+  const children = await fetchChildren(wanted.parents)
+  const closedChildren = children.filter((child) => child.state === 'CLOSED')
+  const numbers = [...new Set([...wanted.numbers, ...closedChildren.map((c) => c.number)])]
+
+  return assemble(nameWithOwner, open, keptClosed(open, await fetchByNumber(numbers)))
 }
 
 /**
@@ -576,7 +619,7 @@ export function describe(snapshot: Snapshot): string {
 }
 
 if (import.meta.main) {
-  const snapshot = takeSnapshot()
+  const snapshot = await takeSnapshot()
   await Bun.write(OUTPUT, await renderDocument(snapshot))
   console.log(`Wrote ${OUTPUT}: ${describe(snapshot)}`)
 }
