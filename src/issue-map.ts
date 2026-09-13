@@ -452,9 +452,7 @@ async function bundleClient(): Promise<string> {
 function fillById(html: string, id: string, body: string): string {
   // 標籤名要吃得到數字，`h1`、`h2` 都是容器。
   const marker = new RegExp(`(<[a-z][a-z0-9]*[^>]*\\sid="${id}"[^>]*>)(</[a-z][a-z0-9]*>)`)
-  const next = html.replace(marker, `$1${body}$2`)
-  if (next === html) throw new Error(`Template is missing an empty #${id}: ${TEMPLATE}`)
-  return next
+  return replaceIn(html, marker, body, `empty #${id}`)
 }
 
 /**
@@ -524,10 +522,15 @@ export async function renderDocument(snapshot: Snapshot): Promise<string> {
   return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
 }
 
+/**
+ * 把樣板裡 `marker` 圈起來的那一段換成 `body`。
+ *
+ * 判斷樣板在不在看的是 `marker` 有沒有比對到，**不是換完的字串有沒有變**——空的 repo 畫出來的
+ * 群組與清單本來就是空字串，拿「沒變」當「樣板壞了」的話，那種 repo 會產不出圖。
+ */
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
-  const next = html.replace(marker, `$1${body}$2`)
-  if (next === html) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
-  return next
+  if (!marker.test(html)) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
+  return html.replace(marker, `$1${body}$2`)
 }
 
 export function describe(snapshot: Snapshot): string {
