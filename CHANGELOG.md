@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/gunter1020/issue-map/compare/v0.4.0...v0.4.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **map:** 被擋著的主票下一步改講阻擋者，不再說可以關掉了 ([b5ae001](https://github.com/gunter1020/issue-map/commit/b5ae00156c4f517e1f2bd69a8ddeb898f2a2bd76))
+
 ## [0.4.0](https://github.com/gunter1020/issue-map/compare/v0.3.1...v0.4.0) (2026-09-11)
 
 
