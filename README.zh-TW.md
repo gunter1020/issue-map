@@ -26,13 +26,14 @@ skill、讓 agent 照著跑——預設的標籤與指令也是從那裡來的�
 
 | 指令                                                | 得到什麼                         |
 | --------------------------------------------------- | -------------------------------- |
-| `bunx issue-map@latest`                             | server 起在空 port，自動開瀏覽器 |
+| `bunx issue-map@latest`                             | server 起在空 port，只印網址     |
+| `bunx issue-map@latest --open`                      | server 起在空 port，自動開瀏覽器 |
 | `bunx -p issue-map@latest issue-map-build`          | 靜態檔到 `dist/issue-map.html`   |
 | `bunx -p issue-map@latest issue-map-build out.html` | 靜態檔到你指定的路徑             |
 
 - repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
 - `ISSUE_MAP_PORT` 固定 port。固定就是嚴格的：被佔住時直接失敗，不會偷偷換一個。
-- `ISSUE_MAP_OPEN=0` 不自動開分頁。
+- 加 `--open` 才會自動開瀏覽器分頁；不加就只印網址。
 - 靜態檔會過期，要看現在的狀態就用 server。
 - 在跑不了 script 的地方（嚴格 CSP、某些預覽窗），檔案會退回一份純文字的票清單，而不是一片空白。
 - `@latest` 取 npm 上最新的一版；要釘住就寫 `bunx issue-map@0.2.0`。
@@ -67,7 +68,6 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 可以動工時圖上叫人跑的指令                             |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | 還要評估時圖上叫人跑的指令                             |
 | `ISSUE_MAP_PORT`           | OS 指派的空 port                  | server 的 port                                         |
-| `ISSUE_MAP_OPEN`           | 開                                | 設 `0` 就不自動開瀏覽器                                |
 
 三個要特別想過的：
 

@@ -26,13 +26,14 @@ skill、让 agent 照着跑——默认的标签与指令也是从那里来的�
 
 | 指令                                                | 得到什么                         |
 | --------------------------------------------------- | -------------------------------- |
-| `bunx issue-map@latest`                             | server 起在空端口，自动开浏览器  |
+| `bunx issue-map@latest`                             | server 起在空端口，只印网址      |
+| `bunx issue-map@latest --open`                      | server 起在空端口，自动开浏览器  |
 | `bunx -p issue-map@latest issue-map-build`          | 静态文件到 `dist/issue-map.html` |
 | `bunx -p issue-map@latest issue-map-build out.html` | 静态文件到你指定的路径           |
 
 - repo 是 `gh` 从 cwd 的 git 推断的，不必填。
 - `ISSUE_MAP_PORT` 固定端口。固定就是严格的：被占住时直接失败，不会偷偷换一个。
-- `ISSUE_MAP_OPEN=0` 不自动开标签页。
+- 加 `--open` 才会自动开浏览器标签页；不加就只印网址。
 - 静态文件会过期，要看现在的状态就用 server。
 - 在跑不了 script 的地方（严格 CSP、某些预览窗），文件会退回一份纯文字的票清单，而不是一片空白。
 - `@latest` 取 npm 上最新的一版；要钉住就写 `bunx issue-map@0.2.0`。
@@ -67,7 +68,6 @@ CLI 那一侧（产文件消息、错误）只有英文。
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 可以动工时图上叫人跑的指令                             |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | 还要评估时图上叫人跑的指令                             |
 | `ISSUE_MAP_PORT`           | OS 指派的空端口                   | server 的端口                                          |
-| `ISSUE_MAP_OPEN`           | 开                                | 设 `0` 就不自动开浏览器                                |
 
 三个要特别想过的：
 

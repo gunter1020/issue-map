@@ -26,13 +26,14 @@ as a skill, let the agent run it — which is where the default labels and comma
 
 | Command                                             | What you get                         |
 | --------------------------------------------------- | ------------------------------------ |
-| `bunx issue-map@latest`                             | Server on a free port, browser opens |
+| `bunx issue-map@latest`                             | Server on a free port, URL printed   |
+| `bunx issue-map@latest --open`                      | Same, plus a browser tab opens       |
 | `bunx -p issue-map@latest issue-map-build`          | Static file at `dist/issue-map.html` |
 | `bunx -p issue-map@latest issue-map-build out.html` | Static file at a path you name       |
 
 - The repo comes from `gh` reading the git remote in your cwd — nothing to fill in.
 - `ISSUE_MAP_PORT` pins the port. Pinned is strict: it fails rather than moving if taken.
-- `ISSUE_MAP_OPEN=0` stops the browser tab.
+- `--open` opens a browser tab; without it the server only prints the URL.
 - A static file goes stale. Use the server when you need the current state.
 - Where scripts cannot run (a strict CSP, some preview panes) the file falls back to a plain
   listing of the issues rather than a blank page.
@@ -69,7 +70,6 @@ Everything has a default — it runs with nothing set. The defaults live in `CON
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | Command the map suggests when an issue is ready                                |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | Command the map suggests when it still needs assessing                         |
 | `ISSUE_MAP_PORT`           | an OS-assigned free port          | Port for the server                                                            |
-| `ISSUE_MAP_OPEN`           | on                                | `0` stops the browser tab                                                      |
 
 Three worth knowing:
 
