@@ -8,18 +8,9 @@
  * 這裡剩下的是 DOM 與事件：讀寫 localStorage 的兩個偏好（語言、收合）、事件代理、選取狀態。
  */
 
-import {
-  DEFAULT_LOCALE,
-  isLocale,
-  type Locale,
-  LOCALE_NAME,
-  LOCALES,
-  locale,
-  setLocale,
-  t,
-} from './issue-map-i18n.ts'
-import { type Snapshot } from './issue-map-model.ts'
-import { esc, type Filter, viewOf } from './issue-map-view.ts'
+import { DEFAULT_LOCALE, isLocale, type Locale, locale, setLocale, t } from './issue-map-i18n.ts'
+import { EMPTY_SNAPSHOT, type Snapshot } from './issue-map-model.ts'
+import { type Filter, langOptionsHTML, viewOf } from './issue-map-view.ts'
 
 /** 樣板保證這些節點存在。找不到就是樣板被改壞了，早點喊比畫出半張圖好。 */
 function pick(id: string): HTMLElement {
@@ -28,9 +19,18 @@ function pick(id: string): HTMLElement {
   return node
 }
 
-const snapshot = JSON.parse(pick('issue-map-data').textContent || '{}') as Partial<Snapshot>
+/**
+ * 行內 JSON 是整份快照唯一可能殘缺的地方（沒有資料、被截斷）。缺的欄位在這裡一次補齊，下游
+ * 拿到的一律是完整的 `Snapshot`——不然每個用到快照的地方都要自己決定「缺了算什麼」。
+ */
+function readSnapshot(): Snapshot {
+  const parsed = JSON.parse(pick('issue-map-data').textContent || '{}') as Partial<Snapshot>
+  return { ...EMPTY_SNAPSHOT, ...parsed }
+}
+
+const snapshot = readSnapshot()
 const view = viewOf(snapshot)
-const repo = snapshot.repo ?? ''
+const repo = snapshot.repo
 
 const detail = pick('detail')
 const rowsEl = pick('rows')
@@ -39,6 +39,28 @@ const tabsEl = pick('tabs')
 
 let selected: number | null = null
 let filter: Filter = 'all'
+
+// ---- 偏好 ----
+
+/**
+ * 偏好記在瀏覽器。**讀不到、寫不進都不是錯誤**：無痕視窗與擋掉儲存的設定裡 `localStorage` 會
+ * 直接丟例外，那時偏好只在這一次有效，畫面照樣是完整的——所以存取一律收在這兩支裡。
+ */
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // 存不了就只在這一次有效。
+  }
+}
 
 // ---- 語言 ----
 
@@ -51,31 +73,20 @@ let filter: Filter = 'all'
 const LOCALE_KEY = 'issue-map:locale'
 
 function readLocale(): Locale {
-  try {
-    const saved = localStorage.getItem(LOCALE_KEY)
-    if (isLocale(saved)) return saved
-  } catch {
-    // 讀不到就用預設，畫面照樣是完整的。
-  }
-  return DEFAULT_LOCALE
+  const saved = readStored(LOCALE_KEY)
+  return isLocale(saved) ? saved : DEFAULT_LOCALE
 }
 
 /** 語言選單只做一次；換語言是整頁重畫，選單自己不重建，不然焦點會掉。 */
 function mountLangPicker(): void {
   const picker = pick('lang')
   if (!(picker instanceof HTMLSelectElement)) throw new Error('#lang 不是 select')
-  picker.innerHTML = LOCALES.map(
-    (option) => `<option value="${option}">${esc(LOCALE_NAME[option])}</option>`,
-  ).join('')
+  picker.innerHTML = langOptionsHTML()
   picker.value = locale()
   picker.addEventListener('change', () => {
     if (!isLocale(picker.value)) return
     setLocale(picker.value)
-    try {
-      localStorage.setItem(LOCALE_KEY, picker.value)
-    } catch {
-      // 存不了就只在這一次有效。
-    }
+    writeStored(LOCALE_KEY, picker.value)
     render()
   })
 }
@@ -90,7 +101,7 @@ const COLLAPSE_KEY = `issue-map:collapsed:${repo}`
 
 function readFolded(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]') as string[])
+    return new Set(JSON.parse(readStored(COLLAPSE_KEY) || '[]') as string[])
   } catch {
     return new Set()
   }
@@ -102,14 +113,26 @@ function isFolded(parent: number): boolean {
   return folded.has(String(parent))
 }
 
+/**
+ * 掛在某張票底下的東西該不該藏起來。
+ *
+ * 看的是**整條祖先鏈**，不只直屬主票——三層的鏈收起最上面那張時，第三層的 `data-parent` 指的
+ * 是第二層，只比對直屬的話它會單獨留在畫面上。
+ */
+function foldedAnywhere(parent: number): boolean {
+  const seen = new Set<number>()
+  for (let at: number | null = parent; at !== null && !seen.has(at);) {
+    if (isFolded(at)) return true
+    seen.add(at)
+    at = view.issueAt(at)?.parent ?? null
+  }
+  return false
+}
+
 function setFolded(parent: number, shut: boolean): void {
   if (shut) folded.add(String(parent))
   else folded.delete(String(parent))
-  try {
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...folded]))
-  } catch {
-    // 存不了就只在這一次有效，畫面照樣能開合。
-  }
+  writeStored(COLLAPSE_KEY, JSON.stringify([...folded]))
   paintFolded()
 }
 
@@ -119,7 +142,7 @@ function setFolded(parent: number, shut: boolean): void {
  */
 function paintFolded(): void {
   for (const node of document.querySelectorAll<HTMLElement>('[data-parent]')) {
-    node.hidden = isFolded(Number(node.dataset.parent))
+    node.hidden = foldedAnywhere(Number(node.dataset.parent))
   }
   for (const section of document.querySelectorAll<HTMLElement>('section.group[data-fold]')) {
     section.dataset.folded = String(isFolded(Number(section.dataset.fold)))
@@ -370,10 +393,11 @@ function render(): void {
   pick('lede').innerHTML = view.lede()
   pick('stats').innerHTML = view.statsHTML()
 
+  // 三段都是逃脫過的 HTML，跟建置時填進樣板的是同一批字串——用 textContent 塞會把逃脫顯示出來。
   const foot = view.footerHTML()
-  pick('foot-truth').textContent = foot.truth
+  pick('foot-truth').innerHTML = foot.truth
   pick('foot-refresh').innerHTML = foot.refresh
-  pick('foot-config').textContent = foot.config
+  pick('foot-config').innerHTML = foot.config
 
   groupsEl.innerHTML = view.groupsHTML()
   tabsEl.setAttribute('aria-label', t('tabs.aria'))

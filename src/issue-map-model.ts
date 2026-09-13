@@ -72,12 +72,34 @@ export type Group = {
 export type Snapshot = {
   readonly generatedAt: string
   readonly repo: string
-  /** 這一次實際生效的標籤字彙。圖例照它寫，不然改了設定圖例就會說謊。 */
-  readonly labels: { readonly ready: readonly string[]; readonly unready: readonly string[] }
+  /**
+   * 這一次實際生效的標籤字彙與閘門。圖例照它寫，不然改了設定圖例就會說謊。
+   *
+   * `gated` 是**狀態機當下真的有沒有把這些標籤當閘門**。字彙本身一律有預設值、永遠非空，拿
+   * 它的長度去推閘門開著沒有的話，repo 還沒導入標籤時票會判成可動，頁尾卻說沒掛標籤等於未定案。
+   */
+  readonly labels: {
+    readonly ready: readonly string[]
+    readonly unready: readonly string[]
+    readonly gated: boolean
+  }
   readonly groups: readonly Group[]
   /** 最長的一條依序未完成鏈，也就是最少要幾輪。 */
   readonly criticalPath: number
   readonly issues: readonly MapIssue[]
+}
+
+/**
+ * 什麼都還沒有的快照。畫面那一側解析行內 JSON 時用它補齊缺的欄位——**缺欄位只在那一個邊界
+ * 成立**，收在這裡的話下游拿到的一律是完整的 `Snapshot`，不必每個欄位各自決定「缺了算什麼」。
+ */
+export const EMPTY_SNAPSHOT: Snapshot = {
+  generatedAt: '',
+  repo: '',
+  labels: { ready: [], unready: [], gated: false },
+  groups: [],
+  criticalPath: 0,
+  issues: [],
 }
 
 /**
@@ -173,10 +195,8 @@ export type Edge = { readonly from: number; readonly to: number }
 export type Layout = {
   /** 每一條線由前到後的站。只有一站的線不標線名。 */
   readonly tracks: readonly (readonly number[])[]
-  /** 孤立的票排成幾列月台。 */
+  /** 孤立的票排成幾列月台。月台接在最後一條線下面，起點就是 `tracks.length`。 */
   readonly islandRows: number
-  /** 月台從第幾列開始。 */
-  readonly islandFrom: number
   readonly xy: ReadonlyMap<number, Point>
   readonly edges: readonly Edge[]
   readonly width: number
@@ -191,6 +211,21 @@ const ISLAND_MIN_PER_ROW = 4
 const ISLAND_MAX_PER_ROW = 12
 
 /**
+ * 一組票內部的阻擋邊。**什麼算一條邊只有這一份定義**——排版照它畫線，頁面也照它判斷這一組畫
+ * 出來到底有沒有線；各算一次的話會出現「說要畫圖、畫出來卻沒有線」。
+ */
+export function edgesWithin(members: readonly MapIssue[]): Edge[] {
+  const inGroup = new Set(members.map((m) => m.number))
+  const edges: Edge[] = []
+  for (const m of members) {
+    for (const from of m.blockedBy) {
+      if (inGroup.has(from)) edges.push({ from, to: m.number })
+    }
+  }
+  return edges
+}
+
+/**
  * 把一組票排成線路圖。
  *
  * x 由整張圖的 level 決定（前置在左），y 由票屬於哪一條線決定。所有邊因此一律向右，跨線的邊
@@ -201,19 +236,12 @@ const ISLAND_MAX_PER_ROW = 12
  * 會變成十二條單站線。
  */
 export function layoutOf(members: readonly MapIssue[]): Layout {
-  const inGroup = new Set(members.map((m) => m.number))
-  const preds = new Map(
-    members.map((m) => [m.number, m.blockedBy.filter((n) => inGroup.has(n))] as const),
-  )
+  const edges = edgesWithin(members)
+  const preds = new Map<number, number[]>(members.map((m) => [m.number, []]))
+  for (const edge of edges) preds.get(edge.to)?.push(edge.from)
   const predsOf = (n: number): readonly number[] => preds.get(n) ?? []
 
-  const hasEdge = new Set<number>()
-  for (const m of members) {
-    for (const from of predsOf(m.number)) {
-      hasEdge.add(m.number)
-      hasEdge.add(from)
-    }
-  }
+  const hasEdge = new Set(edges.flatMap((edge) => [edge.from, edge.to]))
   const wired = members.filter((m) => hasEdge.has(m.number))
   const island = members.filter((m) => !hasEdge.has(m.number))
 
@@ -257,15 +285,9 @@ export function layoutOf(members: readonly MapIssue[]): Layout {
   })
   const islandRows = Math.ceil(island.length / perRow)
 
-  const edges: Edge[] = []
-  for (const m of members) {
-    for (const from of predsOf(m.number)) edges.push({ from, to: m.number })
-  }
-
   return {
     tracks,
     islandRows,
-    islandFrom: tracks.length,
     xy,
     edges,
     width: MAP.gutter + perRow * MAP.step + MAP.rightPad,

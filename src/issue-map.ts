@@ -13,9 +13,9 @@
  * 環境變數與設計決定見 README；移植要調的東西在底下的 `CONFIG`。
  */
 
-import { spawnSync } from 'bun'
+import { spawn } from 'bun'
 
-import { LOCALE_NAME, LOCALES, t } from './issue-map-i18n.ts'
+import { t } from './issue-map-i18n.ts'
 import {
   criticalPathOf,
   groupsOf,
@@ -24,7 +24,7 @@ import {
   type Snapshot,
   type Status,
 } from './issue-map-model.ts'
-import { esc, viewOf } from './issue-map-view.ts'
+import { esc, langOptionsHTML, viewOf } from './issue-map-view.ts'
 
 const TEMPLATE = new URL('./issue-map.html', import.meta.url).pathname
 const CLIENT = new URL('./issue-map-page.ts', import.meta.url).pathname
@@ -48,8 +48,13 @@ function labelList(raw: string | undefined, fallback: string): readonly string[]
  * repo 不在這裡：那是 `gh` 自己的 `GH_REPO`，fork 與多 remote 的判斷也一併交給它。
  */
 const CONFIG = {
-  /** 子票在內文裡指向 parent 的標題。GitHub 原生 sub-issue 有值時優先用原生的。 */
-  parentHeading: process.env.ISSUE_MAP_PARENT_HEADING ?? 'Parent',
+  /**
+   * 子票在內文裡指向 parent 的標題，例如 `Parent`。**沒設就不讀內文**，也就不會去抓內文。
+   *
+   * 內文佔了回應的九成以上，而它只餵這一條 regex；用 GitHub 原生 sub-issue 的 repo 一個字都
+   * 用不到。所以這條慣例改成明講才生效——原生關係一律優先，設了也不會蓋過它。
+   */
+  parentHeading: process.env.ISSUE_MAP_PARENT_HEADING ?? '',
   /** 掛了就是還沒評估完，不能交給誰做。 */
   unready: labelList(process.env.ISSUE_MAP_LABELS_UNREADY, 'needs-triage,needs-info'),
   /** 掛了才算評估完、可以動工。 */
@@ -66,12 +71,14 @@ const CONFIG = {
 
 export type IssueState = 'OPEN' | 'CLOSED'
 
-type RawIssue = {
+/** GraphQL 回來的一張票。純推導那幾支吃的就是這個形狀，所以測試組得出來。 */
+export type RawIssue = {
   readonly number: number
   readonly title: string
   readonly state: IssueState
   readonly url: string
-  readonly body: string
+  /** 只有設了 `ISSUE_MAP_PARENT_HEADING` 才會去抓，其餘時候不存在。 */
+  readonly body?: string
   readonly closedAt: string | null
   /** 開票的人。GitHub 帳號被刪掉的話是 null。 */
   readonly author: { readonly login: string } | null
@@ -83,18 +90,19 @@ type RawIssue = {
 }
 
 /** 一路帶著算好的 parent，免得同一段內文被 regex 掃好幾次。 */
-type Issue = RawIssue & { readonly parentNumber: number | null }
+export type Issue = RawIssue & { readonly parentNumber: number | null }
 
-interface Page<T> {
+/** GraphQL 的一頁。`collect` 吃的就是這個形狀。 */
+export interface Page<T> {
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
   nodes: T[]
 }
 
-/** 票號查不到（號碼其實是 PR，或那張票不存在）時 GraphQL 回 null。 */
-type MaybeIssue = RawIssue | null
+/** 內文只餵 `PARENT_IN_BODY` 一條 regex，沒設慣例就不要去抓——它佔了回應的九成以上。 */
+const BODY_FIELD = CONFIG.parentHeading ? ' body' : ''
 
 const ISSUE_FIELDS = `
-  number title state url body closedAt
+  number title state url closedAt${BODY_FIELD}
   author { login }
   parent { number }
   labels(first: 20) { nodes { name } }
@@ -134,8 +142,11 @@ export function dataOrThrow<T>(stdout: string, stderr: string): T {
  *
  * 票號是我們自己從前一次結果拿到的整數，直接組進查詢字串；只有 cursor 走變數——它是 API 給的
  * 不透明字串，沒有理由自己去逃脫它。
+ *
+ * **非同步**：互不相干的查詢要能一起送，同步等一個子行程就不可能並行；而 server 那邊同步等
+ * 還會把整條 event loop 卡住，第二個瀏覽器分頁得等第一個抓完才拿得到回應。
  */
-function run<T>(query: string, variables: Record<string, string> = {}): T {
+async function run<T>(query: string, variables: Record<string, string> = {}): Promise<T> {
   // `{owner}`／`{repo}` 由 gh 從 cwd 的 git 推斷，`GH_REPO` 可以蓋過去。
   const args = [
     'gh',
@@ -149,8 +160,35 @@ function run<T>(query: string, variables: Record<string, string> = {}): T {
     'repo={repo}',
   ]
   for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
-  const result = spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
-  return dataOrThrow<T>(result.stdout.toString(), result.stderr.toString())
+  const proc = spawn(args, { stdout: 'pipe', stderr: 'pipe' })
+  // 兩條管子一起收：先讀完一條再讀另一條的話，另一條寫滿緩衝就會卡住整個行程。
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  await proc.exited
+  return dataOrThrow<T>(stdout, stderr)
+}
+
+/**
+ * 一路翻到底。`pageAt` 拿 cursor 去要一頁，回傳 `null` 代表那個東西不存在。
+ *
+ * 分頁的終止條件只有這一份——各寫一份的話兩邊會漂移，而漂移的那一邊要真的打 GitHub 才看得出來。
+ */
+export async function collect<T>(
+  pageAt: (after: string | null) => Promise<Page<T> | null>,
+  from: string | null = null,
+): Promise<T[]> {
+  const all: T[] = []
+  let after = from
+  for (;;) {
+    const page = await pageAt(after)
+    if (!page) break
+    all.push(...page.nodes)
+    if (!page.pageInfo.hasNextPage || !page.pageInfo.endCursor) break
+    after = page.pageInfo.endCursor
+  }
+  return all
 }
 
 const OPEN_QUERY = `
@@ -165,27 +203,21 @@ const OPEN_QUERY = `
   }`
 
 /** open issue 全部都要，所以一路翻到底——票超過一頁不是錯誤，是常態。 */
-function fetchOpen(): { nameWithOwner: string; open: RawIssue[] } {
+async function fetchOpen(): Promise<{ nameWithOwner: string; open: RawIssue[] }> {
   type Result = { repository: { nameWithOwner: string; issues: Page<RawIssue> } }
-  const open: RawIssue[] = []
   let nameWithOwner = ''
-  let after: string | null = null
-  for (;;) {
-    const variables: Record<string, string> = after ? { after } : {}
-    const { repository } = run<Result>(OPEN_QUERY, variables)
+  const open = await collect<RawIssue>(async (after) => {
+    const { repository } = await run<Result>(OPEN_QUERY, after ? { after } : {})
     nameWithOwner = repository.nameWithOwner
-    open.push(...repository.issues.nodes)
-    const { hasNextPage, endCursor } = repository.issues.pageInfo
-    if (!hasNextPage || !endCursor) break
-    after = endCursor
-  }
+    return repository.issues
+  })
   return { nameWithOwner, open }
 }
 
 /** alias 不能以數字開頭，所以票號前面補一個 `i`。 */
 const alias = (number: number) => `i${number}`
 
-function chunks<T>(items: readonly T[], size: number): T[][] {
+export function chunks<T>(items: readonly T[], size: number): T[][] {
   const batches: T[][] = []
   for (let index = 0; index < items.length; index += size) {
     batches.push(items.slice(index, index + size))
@@ -193,25 +225,46 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
   return batches
 }
 
-/** 指名要哪幾張票，一批 alias 問完。查不到的就當沒有。 */
-function fetchByNumber(numbers: readonly number[]): RawIssue[] {
-  type Result = { repository: Record<string, MaybeIssue> }
-  const found: RawIssue[] = []
-  for (const batch of chunks(numbers, BATCH)) {
-    const query = `
+/**
+ * 一批 alias 指名要哪幾個票號底下的 `selection`。
+ *
+ * 組查詢、批次切分、依票號取回——這三件事只有這一份。批次之間互不相干，所以一起送；查不到的
+ * 票號不會出現在結果裡（GraphQL 那個 alias 回 null，理由見 `dataOrThrow`）。
+ */
+export function aliasedQuery(batch: readonly number[], selection: string): string {
+  return `
   query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
-      ${batch.map((number) => `${alias(number)}: issue(number: ${number}) { ${ISSUE_FIELDS} }`).join('\n      ')}
+      ${batch.map((number) => `${alias(number)}: issue(number: ${number}) { ${selection} }`).join('\n      ')}
     }
   }`
-    const { repository } = run<Result>(query)
+}
+
+async function byAlias<T>(numbers: readonly number[], selection: string): Promise<Map<number, T>> {
+  type Result = { repository: Record<string, T | null> }
+  const batches = chunks(numbers, BATCH)
+  const answers = await Promise.all(
+    batches.map(async (batch) => (await run<Result>(aliasedQuery(batch, selection))).repository),
+  )
+  const found = new Map<number, T>()
+  batches.forEach((batch, index) => {
+    const repository = answers[index]
     for (const number of batch) {
-      const issue = repository[alias(number)]
-      if (issue) found.push(issue)
+      const node = repository?.[alias(number)]
+      if (node) found.set(number, node)
     }
-  }
+  })
   return found
 }
+
+/** 指名要哪幾張票的完整欄位。查不到的就當沒有。 */
+async function fetchByNumber(numbers: readonly number[]): Promise<RawIssue[]> {
+  return [...(await byAlias<RawIssue>(numbers, ISSUE_FIELDS)).values()]
+}
+
+/** 子票這一趟只問票號與狀態，完整欄位留給指名去要的那一趟。 */
+const CHILD_FIELDS = 'number state'
+export type ChildState = { readonly number: number; readonly state: IssueState }
 
 function childrenQuery(parent: number): string {
   return `
@@ -220,7 +273,7 @@ function childrenQuery(parent: number): string {
       issue(number: ${parent}) {
         subIssues(first: ${PAGE}, after: $after) {
           pageInfo { hasNextPage endCursor }
-          nodes { ${ISSUE_FIELDS} }
+          nodes { ${CHILD_FIELDS} }
         }
       }
     }
@@ -228,70 +281,128 @@ function childrenQuery(parent: number): string {
 }
 
 /**
- * 拿這些 parent 底下的子票，為的是把同一組裡**已完成**的兄弟票撈出來當進度。
+ * 這些主票底下有哪些子票、各自是開是關。為的是把同一組裡**已完成**的兄弟票撈出來當進度。
+ *
+ * **只問票號與狀態。** `subIssues` 沒有 `states:` 可以篩，一定會連開著的一起回來，而開著的
+ * 兄弟本來就在 open 那包；關掉的要的是完整欄位，那一趟跟其他指名去要的票一起走。整包完整欄位
+ * 抓回來再丟掉的話，用原生 sub-issue 的 repo 每次都在重抓自己已經有的東西。
  *
  * 只有 GitHub 原生 sub-issue 有值；用內文 `## Parent` 慣例的 repo 這裡是空的（檔頭說的那個
- * 代價）。open 的兄弟不必靠這裡，它們本來就在 open 那包。
+ * 代價）。
  */
-function fetchChildren(parents: readonly number[]): RawIssue[] {
-  type Batch = { repository: Record<string, { subIssues: Page<RawIssue> } | null> }
-  type More = { repository: { issue: { subIssues: Page<RawIssue> } | null } }
-  const children: RawIssue[] = []
-  for (const batch of chunks(parents, BATCH)) {
-    const query = `
-  query($owner: String!, $repo: String!) {
-    repository(owner: $owner, name: $repo) {
-      ${batch
-        .map(
-          (number) => `${alias(number)}: issue(number: ${number}) {
-        subIssues(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { ${ISSUE_FIELDS} } } }`,
-        )
-        .join('\n      ')}
-    }
-  }`
-    const { repository } = run<Batch>(query)
-    for (const number of batch) {
-      const page = repository[alias(number)]?.subIssues
-      if (!page) continue
-      children.push(...page.nodes)
-      // 子票破百的 parent 很罕見，就讓它自己續抓，不為了它把整批都變成分頁查詢。
-      let after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
-      while (after) {
-        const next = run<More>(childrenQuery(number), { after }).repository.issue?.subIssues
-        if (!next) break
-        children.push(...next.nodes)
-        after = next.pageInfo.hasNextPage ? next.pageInfo.endCursor : null
-      }
-    }
+async function fetchChildren(parents: readonly number[]): Promise<ChildState[]> {
+  type More = { repository: { issue: { subIssues: Page<ChildState> } | null } }
+  const first = await byAlias<{ subIssues: Page<ChildState> }>(
+    parents,
+    `subIssues(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { ${CHILD_FIELDS} } }`,
+  )
+
+  const children: ChildState[] = []
+  // 子票破百的 parent 很罕見，就讓它自己從上一頁的尾巴續抓，不為了它把整批都變成分頁查詢。
+  const rest: Promise<ChildState[]>[] = []
+  for (const [parent, node] of first) {
+    children.push(...node.subIssues.nodes)
+    const { hasNextPage, endCursor } = node.subIssues.pageInfo
+    if (!hasNextPage || !endCursor) continue
+    rest.push(
+      collect<ChildState>(
+        async (after) =>
+          (await run<More>(childrenQuery(parent), after ? { after } : {})).repository.issue
+            ?.subIssues ?? null,
+        endCursor,
+      ),
+    )
   }
+  for (const more of await Promise.all(rest)) children.push(...more)
   return children
 }
 
-/** 原生 sub-issue 優先；沒有就讀內文的 `## <標題>` 之後第一個 `#<n>`。 */
-const PARENT_IN_BODY = new RegExp(`##\\s*${CONFIG.parentHeading}\\s*\\n[\\s\\S]*?#(\\d+)`)
-function withParent(raw: RawIssue): Issue {
-  const inBody = PARENT_IN_BODY.exec(raw.body)
-  return { ...raw, parentNumber: raw.parent?.number ?? (inBody ? Number(inBody[1]) : null) }
+/** 一個標題對應一條 regex，組過就留著——每張票各組一次沒有意義。 */
+const PATTERNS = new Map<string, RegExp>()
+function bodyPattern(heading: string): RegExp {
+  const cached = PATTERNS.get(heading)
+  if (cached) return cached
+  const made = new RegExp(`##\\s*${heading}\\s*\\n[\\s\\S]*?#(\\d+)`)
+  PATTERNS.set(heading, made)
+  return made
 }
 
-export function takeSnapshot(): Snapshot {
-  const { nameWithOwner, open: rawOpen } = fetchOpen()
-  const open = rawOpen.map(withParent)
+/**
+ * 內文裡指向 parent 的票號：`## <標題>` 之後第一個 `#<n>`。
+ *
+ * 標題是空的就不讀——那時內文根本沒被抓下來。標題走參數而不是直接讀環境變數，這條慣例才測得到。
+ */
+export function parentInBody(body: string | undefined, heading: string): number | null {
+  if (!heading || !body) return null
+  const found = bodyPattern(heading).exec(body)
+  return found ? Number(found[1]) : null
+}
 
+/** 原生 sub-issue 優先；沒有才看內文的慣例。 */
+export function withParent(raw: RawIssue, heading = CONFIG.parentHeading): Issue {
+  return {
+    ...raw,
+    parentNumber: raw.parent?.number ?? parentInBody(raw.body, heading),
+  }
+}
+
+/**
+ * 還要指名去要哪幾張票。**純推導**——決定要打哪些請求的規則在這裡，打不打是呼叫端的事。
+ *
+ * `numbers` 是阻擋者與 parent 裡不在 open 那包的；`parents` 是要去撈子票的主票。指名去要而不
+ * 掃整包 closed，理由見檔頭。
+ */
+export function wantedClosed(open: readonly Issue[]): {
+  numbers: number[]
+  parents: number[]
+} {
   const openNumbers = new Set(open.map((issue) => issue.number))
-  const openParents = new Set(open.map((issue) => issue.parentNumber).filter(isNumber))
+  const parents = new Set(open.map((issue) => issue.parentNumber).filter(isNumber))
   const blockers = new Set(
     open.flatMap((issue) => issue.blockedBy.nodes.map((blocker) => blocker.number)),
   )
+  return {
+    numbers: [...new Set([...blockers, ...parents])].filter((number) => !openNumbers.has(number)),
+    parents: [...parents],
+  }
+}
 
-  // 指名去要而不掃整包 closed，理由見檔頭。
-  const referenced = [...new Set([...blockers, ...openParents])].filter(
-    (number) => !openNumbers.has(number),
-  )
-  const closed = dedupe([...fetchByNumber(referenced), ...fetchChildren([...openParents])])
+/**
+ * 從指名要回來的那堆票裡留下真正要帶進快照的。**純推導**。
+ *
+ * 只留已經關掉的：還開著的兄弟票本來就在 open 那包，留下來會變成同一張票兩份。同一張票可能
+ * 同時是某人的阻擋者又是某人的兄弟，所以先用票號收斂。
+ */
+export function keptClosed(open: readonly Issue[], fetched: readonly RawIssue[]): Issue[] {
+  const openNumbers = new Set(open.map((issue) => issue.number))
+  return dedupe(fetched)
     .filter((issue) => issue.state === 'CLOSED' && !openNumbers.has(issue.number))
-    .map(withParent)
+    .map((issue) => withParent(issue))
+}
 
+export async function takeSnapshot(): Promise<Snapshot> {
+  const { nameWithOwner, open: rawOpen } = await fetchOpen()
+  const open = rawOpen.map((issue) => withParent(issue))
+  const wanted = wantedClosed(open)
+
+  // 先用最便宜的一趟問出子票的狀態，再讓完整欄位只抓一次、只抓真的要留下的那些。
+  const children = await fetchChildren(wanted.parents)
+  const closedChildren = children.filter((child) => child.state === 'CLOSED')
+  const numbers = [...new Set([...wanted.numbers, ...closedChildren.map((c) => c.number)])]
+
+  return assemble(nameWithOwner, open, keptClosed(open, await fetchByNumber(numbers)))
+}
+
+/**
+ * 把抓回來的票推導成一份快照。**沒有 `gh`**——所有輸入都在參數裡，所以整段推導測得到，不必
+ * 真的打 GitHub。唯一的外部相依是取現在時間。
+ */
+export function assemble(
+  nameWithOwner: string,
+  open: readonly Issue[],
+  closed: readonly Issue[],
+): Snapshot {
+  const openNumbers = new Set(open.map((issue) => issue.number))
   const kept = [...open, ...closed]
   const parents = new Set(kept.map((issue) => issue.parentNumber).filter(isNumber))
   const openChildren = new Map<number, number>()
@@ -312,7 +423,8 @@ export function takeSnapshot(): Snapshot {
   return {
     generatedAt: new Date().toISOString(),
     repo: nameWithOwner,
-    labels: { ready: CONFIG.ready, unready: CONFIG.unready },
+    // 閘門開著沒有一起寫進去：頁尾要說的就是這一次的判定，不能自己從字彙長度重猜。
+    labels: { ready: CONFIG.ready, unready: CONFIG.unready, gated: triaged },
     groups: groupsOf(issues),
     criticalPath: criticalPathOf(issues),
     issues,
@@ -452,9 +564,7 @@ async function bundleClient(): Promise<string> {
 function fillById(html: string, id: string, body: string): string {
   // 標籤名要吃得到數字，`h1`、`h2` 都是容器。
   const marker = new RegExp(`(<[a-z][a-z0-9]*[^>]*\\sid="${id}"[^>]*>)(</[a-z][a-z0-9]*>)`)
-  const next = html.replace(marker, `$1${body}$2`)
-  if (next === html) throw new Error(`Template is missing an empty #${id}: ${TEMPLATE}`)
-  return next
+  return replaceIn(html, marker, body, `empty #${id}`)
 }
 
 /**
@@ -486,7 +596,7 @@ function prerender(html: string, snapshot: Snapshot): string {
     ['foot-truth', foot.truth],
     ['foot-refresh', foot.refresh],
     ['foot-config', foot.config],
-    ['lang', LOCALES.map((l) => `<option value="${l}">${esc(LOCALE_NAME[l])}</option>`).join('')],
+    ['lang', langOptionsHTML()],
   ]
   const withBody = filled.reduce((acc, [id, body]) => fillById(acc, id, body), html)
   return replaceIn(withBody, /(<title>)[\s\S]*?(<\/title>)/, esc(title), 'title')
@@ -524,10 +634,15 @@ export async function renderDocument(snapshot: Snapshot): Promise<string> {
   return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
 }
 
+/**
+ * 把樣板裡 `marker` 圈起來的那一段換成 `body`。
+ *
+ * 判斷樣板在不在看的是 `marker` 有沒有比對到，**不是換完的字串有沒有變**——空的 repo 畫出來的
+ * 群組與清單本來就是空字串，拿「沒變」當「樣板壞了」的話，那種 repo 會產不出圖。
+ */
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
-  const next = html.replace(marker, `$1${body}$2`)
-  if (next === html) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
-  return next
+  if (!marker.test(html)) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
+  return html.replace(marker, `$1${body}$2`)
 }
 
 export function describe(snapshot: Snapshot): string {
@@ -536,7 +651,7 @@ export function describe(snapshot: Snapshot): string {
 }
 
 if (import.meta.main) {
-  const snapshot = takeSnapshot()
+  const snapshot = await takeSnapshot()
   await Bun.write(OUTPUT, await renderDocument(snapshot))
   console.log(`Wrote ${OUTPUT}: ${describe(snapshot)}`)
 }

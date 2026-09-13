@@ -8,9 +8,10 @@
  * 文案一律走 `issue-map-i18n.ts` 的 `t()`，它讀的是當下語言。
  */
 
-import { locale, t } from './issue-map-i18n.ts'
+import { LOCALE_NAME, LOCALES, locale, t } from './issue-map-i18n.ts'
 import {
   type Edge,
+  edgesWithin,
   type Group,
   layoutOf,
   type Layout,
@@ -32,6 +33,14 @@ const ESCAPES: Readonly<Record<string, string>> = {
 
 export function esc(text: string): string {
   return text.replace(/[&<>"]/g, (c) => ESCAPES[c] ?? c)
+}
+
+/**
+ * 語言選單的選項。建置時先畫一份進樣板，畫面那一側重建選單時用的是同一支——這一支檔案是標記
+ * 的唯一產生處，選單也不例外。
+ */
+export function langOptionsHTML(): string {
+  return LOCALES.map((l) => `<option value="${l}">${esc(LOCALE_NAME[l])}</option>`).join('')
 }
 
 /**
@@ -57,7 +66,13 @@ const MAX_MAPS = 20
 /** 一群票對應的一張圖。`members` 是票，`track` 是這一組的線色。 */
 export type Shown = { group: Group; members: readonly MapIssue[]; track: string }
 
-export type Row = { issue: MapIssue; parent: number | null; hasKids: boolean }
+/** 清單上的一列。`parent` 是直屬主票，`depth` 是它在 parent 樹裡的層數（頂層是 0）。 */
+export type Row = {
+  issue: MapIssue
+  parent: number | null
+  depth: number
+  hasKids: boolean
+}
 
 export type Filter = Status | 'all'
 
@@ -67,12 +82,12 @@ export type Filter = Status | 'all'
  * 先算一次衍生資料（計數、反向索引），再把畫的函式掛上去——兩側都只要 `viewOf(snapshot)` 一次
  * 就能重複畫。
  */
-export function viewOf(snapshot: Partial<Snapshot>) {
-  const issues: readonly MapIssue[] = snapshot.issues ?? []
+export function viewOf(snapshot: Snapshot) {
+  const issues: readonly MapIssue[] = snapshot.issues
   const byNumber = new Map(issues.map((issue) => [issue.number, issue]))
   const work = issues.filter((issue) => !issue.isParent)
-  const criticalPath = snapshot.criticalPath ?? 0
-  const repo = snapshot.repo ?? ''
+  const criticalPath = snapshot.criticalPath
+  const repo = snapshot.repo
 
   const counts = Object.fromEntries(
     STATUS_ORDER.map((status) => [status, work.filter((i) => i.status === status).length]),
@@ -95,6 +110,13 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.number - b.number
 
   const statusLabel = (status: Status): string => t(`status.${status}`)
+
+  /**
+   * 現在可動的票，照清單的順序。導言與詳細面板的預設那一張都讀它——兩邊各算一次的話，導言說
+   * 「最前面是 #N」而面板開的卻是別張。
+   */
+  const frontline = (): MapIssue[] =>
+    work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)
 
   /** 日期一律照當下語言排。快照裡存的是 ISO 字串，格式化是畫面的事。 */
   const dateTime = (iso: string): string =>
@@ -169,14 +191,14 @@ export function viewOf(snapshot: Partial<Snapshot>) {
   /** 導言只講數得出來的事實。沒有可動的票、或整批都關完了，句子跟著換。 */
   const lede = (): string => {
     if (!openCount) return t('lede.allDone')
-    const frontline = work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)
+    const ready = frontline()
     const parts = [t('lede.open', { n: openCount })]
-    if (frontline.length) {
-      const first = frontline
+    if (ready.length) {
+      const first = ready
         .slice(0, 3)
-        .map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">#${i.number}</a>`)
+        .map((i) => link(i.number))
         .join(t('join.items'))
-      parts.push(t('lede.ready', { n: frontline.length, issues: first }))
+      parts.push(t('lede.ready', { n: ready.length, issues: first }))
     } else {
       parts.push(t('lede.none'))
     }
@@ -207,9 +229,14 @@ export function viewOf(snapshot: Partial<Snapshot>) {
       .join('')
   }
 
+  /**
+   * 頁尾的三段。**三段都是 HTML**，不是純文字——`refresh` 帶 `<code>`，另外兩段是逃脫過的文字，
+   * 所以兩邊都要當 HTML 塞。當成文字塞的話逃脫會被看見：repo 把標籤取名 `A&B` 時畫面上會出現
+   * `A&amp;B`。
+   */
   const footerHTML = (): { truth: string; refresh: string; config: string } => {
     const code = (command: string) => `<code>${esc(command)}</code>`
-    const vocab = snapshot.labels ?? { ready: [], unready: [] }
+    const vocab = snapshot.labels
     return {
       truth: esc(t('foot.truth')),
       refresh: t('foot.refresh', {
@@ -218,7 +245,8 @@ export function viewOf(snapshot: Partial<Snapshot>) {
       }),
       // 標籤名是 repo 給的字，逃脫過才進 innerHTML。
       config: esc(
-        vocab.ready.length
+        // 照快照記下的閘門說話。字彙一律有預設值、永遠非空，拿它的長度判斷的話這句必然說謊。
+        vocab.gated
           ? t('foot.vocab', {
               ready: vocab.ready.join(t('join.or')),
               unready: vocab.unready.join(t('join.slash')),
@@ -346,14 +374,15 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     })
     if (layout.islandRows) {
       labels.push(
-        `<div class="tlabel" style="top:${MAP.top + layout.islandFrom * MAP.row}px">` +
+        `<div class="tlabel" style="top:${MAP.top + layout.tracks.length * MAP.row}px">` +
           `<b>${esc(t('map.islandName'))}</b><span>${esc(t('map.islandSub'))}</span></div>`,
       )
     }
     return labels.join('')
   }
 
-  const mapHTML = (shown: Shown): string => {
+  /** `parent` 不是 null 時，圖本體跟著那張主票收合——收合的對象由呼叫端指定。 */
+  const mapHTML = (shown: Shown, parent: number | null): string => {
     const layout = layoutOf(shown.members)
     const seenTo = new Map<number, number>()
     const rails = layout.edges
@@ -370,7 +399,7 @@ export function viewOf(snapshot: Partial<Snapshot>) {
       })
       .join('')
     return (
-      `<div class="map-wrap" style="--track:${shown.track}">` +
+      `<div class="map-wrap"${foldTarget(parent)} style="--track:${shown.track}">` +
       trackLabelsHTML(layout) +
       `<svg width="${layout.width}" height="${layout.height}"` +
       ` viewBox="0 0 ${layout.width} ${layout.height}" role="img">` +
@@ -380,23 +409,20 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     )
   }
 
-  /** 每張圖底下重複一份 key。圖可以收起來，key 跟著收，不會留一段沒有圖的說明。 */
-  const mapKeyHTML = (): string => {
-    const shapes: readonly [string, string][] = [
-      ['k-ready', t('legend.ready')],
-      ['k-active', t('legend.active')],
-      ['k-blocked', t('legend.blocked')],
-      ['k-triage', t('legend.triage')],
-      ['k-done', t('legend.done')],
-    ]
-    return (
-      '<div class="map-key">' +
-      shapes.map(([mark, label]) => `<span><i class="${mark}"></i>${esc(label)}</span>`).join('') +
-      `<span>${esc(t('legend.solid'))}</span>` +
-      `<span>${esc(t('legend.dashed'))}</span>` +
-      '</div>'
-    )
-  }
+  /**
+   * 每張圖底下重複一份 key。圖可以收起來，key 跟著收，不會留一段沒有圖的說明。
+   *
+   * 五個項目照 `STATUS_ORDER` 長出來，順序與狀態本身同一份；class 是 `k-<狀態>`，文案鍵是
+   * `legend.<狀態>`，所以新增一個狀態不必回來改這裡。
+   */
+  const mapKeyHTML = (): string =>
+    '<div class="map-key">' +
+    STATUS_ORDER.map(
+      (status) => `<span><i class="k-${status}"></i>${esc(t(`legend.${status}`))}</span>`,
+    ).join('') +
+    `<span>${esc(t('legend.solid'))}</span>` +
+    `<span>${esc(t('legend.dashed'))}</span>` +
+    '</div>'
 
   /** 一群票的標題。主票那一群用主票標題（真資料），其他三種是頁面自己的分類。 */
   const groupTitle = (group: Group): string => {
@@ -430,18 +456,19 @@ export function viewOf(snapshot: Partial<Snapshot>) {
   const foldButtonHTML = (parent: number): string =>
     `<button type="button" class="fold" data-fold-for="${parent}" aria-expanded="true"></button>`
 
+  /** 掛了這個屬性的東西會跟著那張主票一起收起來。沒有主票的群收不了，就不掛。 */
+  const foldTarget = (parent: number | null): string =>
+    parent === null ? '' : ` data-parent="${parent}"`
+
   const shownGroups = (): Shown[] =>
-    (snapshot.groups ?? []).map((group, index) => ({
+    snapshot.groups.map((group, index) => ({
       group,
       members: group.members.map(issueAt).filter((issue): issue is MapIssue => issue !== undefined),
       track: `var(${TRACK_COLOURS[index % TRACK_COLOURS.length]})`,
     }))
 
   /** 這一組裡有沒有票互相擋著。沒有的話畫出來只是一片點陣，不是線路圖。 */
-  const hasRails = (shown: Shown): boolean => {
-    const inGroup = new Set(shown.members.map((m) => m.number))
-    return shown.members.some((m) => m.blockedBy.some((n) => inGroup.has(n)))
-  }
+  const hasRails = (shown: Shown): boolean => edgesWithin(shown.members).length > 0
 
   const groupsHTML = (): string => {
     const groups = shownGroups()
@@ -456,11 +483,9 @@ export function viewOf(snapshot: Partial<Snapshot>) {
         const parent = shown.group.parent
         const fold = parent === null ? '' : foldButtonHTML(parent)
         const attrs = parent === null ? '' : ` data-fold="${parent}"`
-        const bodyAttrs = parent === null ? '' : ` data-parent="${parent}"`
         const body = drawn.has(shown)
-          ? mapHTML(shown).replace('class="map-wrap"', `class="map-wrap"${bodyAttrs}`) +
-            mapKeyHTML()
-          : `<p class="undrawn"${bodyAttrs}>${esc(t('group.undrawn'))}</p>`
+          ? mapHTML(shown, parent) + mapKeyHTML()
+          : `<p class="undrawn"${foldTarget(parent)}>${esc(t('group.undrawn'))}</p>`
         return (
           `<section class="group" style="--track:${shown.track}"${attrs}>` +
           `<div class="group-head">${fold}<h2>${esc(groupTitle(shown.group))}</h2>` +
@@ -513,10 +538,7 @@ export function viewOf(snapshot: Partial<Snapshot>) {
   }
 
   /** 沒有選取時預設看哪一張：第一張可接手的，再不然就第一張。 */
-  const defaultPick = (): number | undefined => {
-    const first = work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)[0]
-    return (first ?? issues[0])?.number
-  }
+  const defaultPick = (): number | undefined => (frontline()[0] ?? issues[0])?.number
 
   const detailPanelHTML = (number: number | undefined): { status: string; html: string } => {
     const issue = number === undefined ? undefined : issueAt(number)
@@ -526,42 +548,66 @@ export function viewOf(snapshot: Partial<Snapshot>) {
 
   // ---- 清單 ----
 
-  /** 主票在前、它的子票跟在後面。篩選時主票只要有子票入選就留著當標頭。 */
+  /**
+   * 主票在前、它的子票跟在後面。
+   *
+   * `parent` 是一個指標欄位，語意上就是任意深度的森林，所以這裡真的把它折成森林再深度優先
+   * 展平——**每張票只會出現一次**。把它當成「有沒有 parent 就是 root」的兩層結構、再補一條
+   * 「把漏掉的主票撿回來」的例外的話，三層鏈的中間那張會同時是子票又是主票，渲染成兩列。
+   *
+   * 篩選時祖先只要有後代入選就留著當標頭，否則子票沒了歸屬。
+   */
   const rowOrder = (filter: Filter): Row[] => {
-    const pass = new Set(
-      issues.filter((i) => filter === 'all' || i.status === filter).map((i) => i.number),
-    )
     const kids = new Map<number, MapIssue[]>()
     const roots: MapIssue[] = []
     for (const issue of issues) {
+      // 指向沒被帶進快照的 parent，就當它自己是一枝的頂端。
       const parent = issue.parent !== null && byNumber.has(issue.parent) ? issue.parent : null
       if (parent === null) {
-        if (pass.has(issue.number)) roots.push(issue)
+        roots.push(issue)
         continue
       }
-      if (!pass.has(issue.number)) continue
       const siblings = kids.get(parent) ?? []
       siblings.push(issue)
       kids.set(parent, siblings)
     }
-    // 有子票入選但自己沒入選的主票，仍要出現，否則子票就沒了歸屬。
-    for (const parent of kids.keys()) {
-      const issue = issueAt(parent)
-      if (issue && !roots.includes(issue)) roots.push(issue)
+
+    const hits = (issue: MapIssue): boolean => filter === 'all' || issue.status === filter
+    const rows: Row[] = []
+    const seen = new Set<number>()
+
+    /** 展平這一枝，回傳它有沒有東西入選。整枝都沒入選就把自己也收回去。 */
+    const walk = (issue: MapIssue, parent: number | null, depth: number): boolean => {
+      // parent 成環時止血：資料不該有環，真的有就讓它在這裡停下來而不是無限遞迴。
+      if (seen.has(issue.number)) return false
+      seen.add(issue.number)
+      const at = rows.length
+      rows.push({ issue, parent, depth, hasKids: false })
+      let keptChild = false
+      for (const child of (kids.get(issue.number) ?? []).sort(byStatusThenNumber)) {
+        keptChild = walk(child, issue.number, depth + 1) || keptChild
+      }
+      if (!keptChild && !hits(issue)) {
+        // 整枝沒人入選，連自己一起收回去——沒有後代被留下，這裡只會砍到自己那一列。
+        rows.length = at
+        return false
+      }
+      rows[at] = { issue, parent, depth, hasKids: keptChild }
+      return true
     }
 
-    const rows: Row[] = []
-    for (const root of roots.sort(byStatusThenNumber)) {
-      const children = (kids.get(root.number) ?? []).sort(byStatusThenNumber)
-      rows.push({ issue: root, parent: null, hasKids: children.length > 0 })
-      for (const child of children) rows.push({ issue: child, parent: root.number, hasKids: false })
-    }
+    for (const root of [...roots].sort(byStatusThenNumber)) walk(root, null, 0)
+    // 成環的票進不了任何一枝，但它們還是得看得見。
+    const stranded = issues.filter((issue) => !seen.has(issue.number)).sort(byStatusThenNumber)
+    for (const issue of stranded) walk(issue, null, 0)
     return rows
   }
 
   const rowHTML = (row: Row): string => {
     const issue = row.issue
-    const parent = row.parent === null ? '' : ` data-parent="${row.parent}"`
+    // 縮排的級距在 CSS 裡，這裡只說第幾層。
+    const parent =
+      row.parent === null ? '' : ` data-parent="${row.parent}" style="--depth:${row.depth}"`
     const kids = row.hasKids ? ' data-haskids="true"' : ''
     const slot = row.hasKids ? `<span class="fold-slot">${foldButtonHTML(issue.number)}</span>` : ''
     const waitsTitle =
@@ -646,5 +692,3 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     tabsHTML,
   }
 }
-
-export type View = ReturnType<typeof viewOf>
