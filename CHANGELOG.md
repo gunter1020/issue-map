@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/gunter1020/issue-map/compare/v0.5.0...v0.6.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **serve:** `ISSUE_MAP_OPEN` 移除，server 預設不再自動開瀏覽器；要開分頁請加 `--open`。
+
+### Features
+
+* **serve:** 自動開瀏覽器改成 --open 旗標，預設不開 ([0d25b36](https://github.com/gunter1020/issue-map/commit/0d25b360248ac7906ee291f67d2efe00c367f1fa))
+
 ## [0.5.0](https://github.com/gunter1020/issue-map/compare/v0.4.0...v0.5.0) (2026-09-13)
 
 
