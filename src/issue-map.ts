@@ -66,7 +66,8 @@ const CONFIG = {
 
 export type IssueState = 'OPEN' | 'CLOSED'
 
-type RawIssue = {
+/** GraphQL 回來的一張票。純推導那幾支吃的就是這個形狀，所以測試組得出來。 */
+export type RawIssue = {
   readonly number: number
   readonly title: string
   readonly state: IssueState
@@ -83,7 +84,7 @@ type RawIssue = {
 }
 
 /** 一路帶著算好的 parent，免得同一段內文被 regex 掃好幾次。 */
-type Issue = RawIssue & { readonly parentNumber: number | null }
+export type Issue = RawIssue & { readonly parentNumber: number | null }
 
 interface Page<T> {
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
@@ -269,29 +270,64 @@ function fetchChildren(parents: readonly number[]): RawIssue[] {
 
 /** 原生 sub-issue 優先；沒有就讀內文的 `## <標題>` 之後第一個 `#<n>`。 */
 const PARENT_IN_BODY = new RegExp(`##\\s*${CONFIG.parentHeading}\\s*\\n[\\s\\S]*?#(\\d+)`)
-function withParent(raw: RawIssue): Issue {
+export function withParent(raw: RawIssue): Issue {
   const inBody = PARENT_IN_BODY.exec(raw.body)
   return { ...raw, parentNumber: raw.parent?.number ?? (inBody ? Number(inBody[1]) : null) }
+}
+
+/**
+ * 還要指名去要哪幾張票。**純推導**——決定要打哪些請求的規則在這裡，打不打是呼叫端的事。
+ *
+ * `numbers` 是阻擋者與 parent 裡不在 open 那包的；`parents` 是要去撈子票的主票。指名去要而不
+ * 掃整包 closed，理由見檔頭。
+ */
+export function wantedClosed(open: readonly Issue[]): {
+  numbers: number[]
+  parents: number[]
+} {
+  const openNumbers = new Set(open.map((issue) => issue.number))
+  const parents = new Set(open.map((issue) => issue.parentNumber).filter(isNumber))
+  const blockers = new Set(
+    open.flatMap((issue) => issue.blockedBy.nodes.map((blocker) => blocker.number)),
+  )
+  return {
+    numbers: [...new Set([...blockers, ...parents])].filter((number) => !openNumbers.has(number)),
+    parents: [...parents],
+  }
+}
+
+/**
+ * 從指名要回來的那堆票裡留下真正要帶進快照的。**純推導**。
+ *
+ * 只留已經關掉的：還開著的兄弟票本來就在 open 那包，留下來會變成同一張票兩份。同一張票可能
+ * 同時是某人的阻擋者又是某人的兄弟，所以先用票號收斂。
+ */
+export function keptClosed(open: readonly Issue[], fetched: readonly RawIssue[]): Issue[] {
+  const openNumbers = new Set(open.map((issue) => issue.number))
+  return dedupe(fetched)
+    .filter((issue) => issue.state === 'CLOSED' && !openNumbers.has(issue.number))
+    .map(withParent)
 }
 
 export function takeSnapshot(): Snapshot {
   const { nameWithOwner, open: rawOpen } = fetchOpen()
   const open = rawOpen.map(withParent)
+  const wanted = wantedClosed(open)
+  const fetched = [...fetchByNumber(wanted.numbers), ...fetchChildren(wanted.parents)]
 
+  return assemble(nameWithOwner, open, keptClosed(open, fetched))
+}
+
+/**
+ * 把抓回來的票推導成一份快照。**沒有 `gh`**——所有輸入都在參數裡，所以整段推導測得到，不必
+ * 真的打 GitHub。唯一的外部相依是取現在時間。
+ */
+export function assemble(
+  nameWithOwner: string,
+  open: readonly Issue[],
+  closed: readonly Issue[],
+): Snapshot {
   const openNumbers = new Set(open.map((issue) => issue.number))
-  const openParents = new Set(open.map((issue) => issue.parentNumber).filter(isNumber))
-  const blockers = new Set(
-    open.flatMap((issue) => issue.blockedBy.nodes.map((blocker) => blocker.number)),
-  )
-
-  // 指名去要而不掃整包 closed，理由見檔頭。
-  const referenced = [...new Set([...blockers, ...openParents])].filter(
-    (number) => !openNumbers.has(number),
-  )
-  const closed = dedupe([...fetchByNumber(referenced), ...fetchChildren([...openParents])])
-    .filter((issue) => issue.state === 'CLOSED' && !openNumbers.has(issue.number))
-    .map(withParent)
-
   const kept = [...open, ...closed]
   const parents = new Set(kept.map((issue) => issue.parentNumber).filter(isNumber))
   const openChildren = new Map<number, number>()
