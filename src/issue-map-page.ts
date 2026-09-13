@@ -393,10 +393,11 @@ function render(): void {
   pick('lede').innerHTML = view.lede()
   pick('stats').innerHTML = view.statsHTML()
 
+  // 三段都是逃脫過的 HTML，跟建置時填進樣板的是同一批字串——用 textContent 塞會把逃脫顯示出來。
   const foot = view.footerHTML()
-  pick('foot-truth').textContent = foot.truth
+  pick('foot-truth').innerHTML = foot.truth
   pick('foot-refresh').innerHTML = foot.refresh
-  pick('foot-config').textContent = foot.config
+  pick('foot-config').innerHTML = foot.config
 
   groupsEl.innerHTML = view.groupsHTML()
   tabsEl.setAttribute('aria-label', t('tabs.aria'))

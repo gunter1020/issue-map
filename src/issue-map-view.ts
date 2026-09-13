@@ -229,6 +229,11 @@ export function viewOf(snapshot: Snapshot) {
       .join('')
   }
 
+  /**
+   * 頁尾的三段。**三段都是 HTML**，不是純文字——`refresh` 帶 `<code>`，另外兩段是逃脫過的文字，
+   * 所以兩邊都要當 HTML 塞。當成文字塞的話逃脫會被看見：repo 把標籤取名 `A&B` 時畫面上會出現
+   * `A&amp;B`。
+   */
   const footerHTML = (): { truth: string; refresh: string; config: string } => {
     const code = (command: string) => `<code>${esc(command)}</code>`
     const vocab = snapshot.labels
