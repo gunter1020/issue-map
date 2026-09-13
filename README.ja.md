@@ -28,13 +28,14 @@ Agent は 1 ラウンドに 1 枚しか扱えないので、毎ラウンド実�
 
 | コマンド                                            | 得られるもの                             |
 | --------------------------------------------------- | ---------------------------------------- |
-| `bunx issue-map@latest`                             | 空き port で server 起動、ブラウザも開く |
+| `bunx issue-map@latest`                             | 空き port で server 起動、URL を表示     |
+| `bunx issue-map@latest --open`                      | 空き port で server 起動、ブラウザも開く |
 | `bunx -p issue-map@latest issue-map-build`          | 静的ファイルを `dist/issue-map.html` へ  |
 | `bunx -p issue-map@latest issue-map-build out.html` | 静的ファイルを指定したパスへ             |
 
 - repo は `gh` が cwd の git から推測するので、指定は不要です。
 - `ISSUE_MAP_PORT` で port を固定できます。固定は厳密で、埋まっていれば黙って移らず失敗します。
-- `ISSUE_MAP_OPEN=0` でタブを開きません。
+- `--open` を付けるとブラウザのタブを開きます。付けなければ URL を表示するだけです。
 - 静的ファイルは古くなります。いまの状態を見たいときは server を使ってください。
 - スクリプトが動かせない場所（厳しい CSP、一部のプレビュー）では、空白ではなくチケットの
   プレーンな一覧にフォールバックします。
@@ -71,7 +72,6 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 | `ISSUE_MAP_CMD_IMPLEMENT`  | `/implement`                      | 着手できるときにマップが促すコマンド                       |
 | `ISSUE_MAP_CMD_TRIAGE`     | `/triage`                         | まだ評価が要るときにマップが促すコマンド                   |
 | `ISSUE_MAP_PORT`           | OS が割り当てる空き port          | server のポート                                            |
-| `ISSUE_MAP_OPEN`           | 有効                              | `0` にするとブラウザを開かない                             |
 
 とくに考えておくべきものが 3 つ：
 
