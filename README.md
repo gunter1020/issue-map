@@ -56,7 +56,7 @@ CLI output (build messages, errors) is English only.
 ## Configuration
 
 Everything has a default — it runs with nothing set. The defaults live in `CONFIG` in
-`scripts/issue-map.ts`.
+`src/issue-map.ts`.
 
 | Environment variable       | Default                           | Meaning                                                                        |
 | -------------------------- | --------------------------------- | ------------------------------------------------------------------------------ |
@@ -95,15 +95,15 @@ tree.
 
 ## Files
 
-| File                         | Responsibility                                                           |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `scripts/issue-map.ts`       | Snapshot, status and next step, produces the HTML. Knobs in its `CONFIG` |
-| `scripts/issue-map-model.ts` | Pure data model: grouping, critical path, layout. Shared by both sides   |
-| `scripts/issue-map-i18n.ts`  | Strings for the four languages, plus the lookup                          |
-| `scripts/issue-map-page.ts`  | Browser-side code, bundled into the HTML at build time                   |
-| `scripts/issue-map.html`     | The template. Two placeholder blocks get filled in                       |
-| `scripts/issue-map-serve.ts` | Local server, re-fetches on every request                                |
-| `scripts/mutate.ts`          | Mutation testing: break one line, see whether a test goes red            |
+| File                     | Responsibility                                                           |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `src/issue-map.ts`       | Snapshot, status and next step, produces the HTML. Knobs in its `CONFIG` |
+| `src/issue-map-model.ts` | Pure data model: grouping, critical path, layout. Shared by both sides   |
+| `src/issue-map-i18n.ts`  | Strings for the four languages, plus the lookup                          |
+| `src/issue-map-page.ts`  | Browser-side code, bundled into the HTML at build time                   |
+| `src/issue-map.html`     | The template. Two placeholder blocks get filled in                       |
+| `src/issue-map-serve.ts` | Local server, re-fetches on every request                                |
+| `tools/mutate.ts`        | Mutation testing: break one line, see whether a test goes red            |
 
 ## Developing in this repo
 
@@ -123,10 +123,10 @@ shape, spacing) are deliberately not asserted. A new guard test has to be verifi
 the defect it claims to catch back into the product code and confirm it goes red:
 
 ```bash
-bun run mutate scripts/issue-map-model.ts tests/issue-map-layout.test.ts
+bun run mutate src/issue-map-model.ts tests/issue-map-layout.test.ts
 ```
 
-**Adding to `scripts/issue-map-i18n.ts`.** `EN` is the original and defines the keys; the three
+**Adding to `src/issue-map-i18n.ts`.** `EN` is the original and defines the keys; the three
 translations are typed from it, so a missing key or a missing `{n}` placeholder turns
 `bun run typecheck` red. Keys needing English plurals are written `{ one, other }`; Chinese and
 Japanese take a single string. The model never builds sentences — `nextStep` is a structured value

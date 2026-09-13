@@ -15,27 +15,21 @@
     "url": "git+https://github.com/gunter1020/issue-map.git"
   },
   "bin": {
-    "issue-map": "./scripts/issue-map-serve.ts",
-    "issue-map-build": "./scripts/issue-map.ts"
+    "issue-map": "./src/issue-map-serve.ts",
+    "issue-map-build": "./src/issue-map.ts"
   },
   "files": [
     "README.zh-TW.md",
     "README.zh-CN.md",
     "README.ja.md",
-    "scripts/issue-map.ts",
-    "scripts/issue-map-i18n.ts",
-    "scripts/issue-map-model.ts",
-    "scripts/issue-map-page.ts",
-    "scripts/issue-map-view.ts",
-    "scripts/issue-map-serve.ts",
-    "scripts/issue-map.html"
+    "src"
   ],
   "type": "module",
   "scripts": {
-    "issue-map": "bun run scripts/issue-map.ts",
-    "issue-map:serve": "ISSUE_MAP_OPEN=0 bun --watch scripts/issue-map-serve.ts",
+    "issue-map": "bun run src/issue-map.ts",
+    "issue-map:serve": "ISSUE_MAP_OPEN=0 bun --watch src/issue-map-serve.ts",
     "typecheck": "tsc --noEmit",
-    "mutate": "bun run scripts/mutate.ts",
+    "mutate": "bun run tools/mutate.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",

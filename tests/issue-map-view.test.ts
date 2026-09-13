@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { DEFAULT_LOCALE, setLocale } from '../scripts/issue-map-i18n.ts'
-import type { MapIssue, Snapshot, Status } from '../scripts/issue-map-model.ts'
-import { viewOf } from '../scripts/issue-map-view.ts'
+import { DEFAULT_LOCALE, setLocale } from '../src/issue-map-i18n.ts'
+import type { MapIssue, Snapshot, Status } from '../src/issue-map-model.ts'
+import { viewOf } from '../src/issue-map-view.ts'
 
 /**
  * 畫出來的標記。建置時與瀏覽器裡用的是同一批函式，所以這裡守的是兩邊共同的產出。

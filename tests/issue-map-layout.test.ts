@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { layoutOf, MAP, type MapIssue } from '../scripts/issue-map-model.ts'
+import { layoutOf, MAP, type MapIssue } from '../src/issue-map-model.ts'
 
 /**
  * 線路圖的排版。

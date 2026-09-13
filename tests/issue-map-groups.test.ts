@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { criticalPathOf, groupsOf, type MapIssue, type Status } from '../scripts/issue-map-model.ts'
+import { criticalPathOf, groupsOf, type MapIssue, type Status } from '../src/issue-map-model.ts'
 
 /**
  * 分群與關鍵路徑。地圖一張圖畫一群，統計那一格說「最少要幾輪」，兩者都由這裡算。

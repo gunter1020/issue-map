@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    // DOM 是給 `scripts/issue-map-page.ts` 的——那一支跑在瀏覽器裡，建置時被打包進 HTML。
+    // DOM 是給 `src/issue-map-page.ts` 的——那一支跑在瀏覽器裡，建置時被打包進 HTML。
     // DOM.Iterable 是必要的，不是保險：那一支用 `for...of` 走 `querySelectorAll` 的結果，
     // 少了它 `NodeListOf` 沒有 iterator。
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
@@ -22,5 +22,5 @@
     "types": ["bun"]
   },
   // 測試也納入檢查：量測工具出錯比出貨程式出錯更難發現，因為錯的是「用來判斷對錯的那把尺」。
-  "include": ["scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tools/**/*.ts", "tests/**/*.ts"]
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { dataOrThrow } from '../scripts/issue-map.ts'
+import { dataOrThrow } from '../src/issue-map.ts'
 
 /**
  * `gh api graphql` 的輸出怎麼判讀。抓取本身要真的打 GitHub，這裡只驗判讀那一段。

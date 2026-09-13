@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { MapIssue, Snapshot, Status } from '../scripts/issue-map-model.ts'
-import { describe as describeSnapshot } from '../scripts/issue-map.ts'
+import type { MapIssue, Snapshot, Status } from '../src/issue-map-model.ts'
+import { describe as describeSnapshot } from '../src/issue-map.ts'
 
 /**
  * 跑完之後印出來的那一句話。`bun run issue-map` 與 server 每次重抓都靠它回報這次抓到什麼，

@@ -25,7 +25,6 @@ Closes #
 
 - [ ] **無**對外契約變動
 - [ ] 改了 bin 用法 / 環境變數（`CONFIG`）/ 產出 HTML → README 已同 PR 更新
-- [ ] 增減 `scripts/` 下的檔案 → package.json 的 `files` 已同步（漏了就是發出去缺檔，本機看不出來）
 - [ ] **破壞性變更** → 寫清楚壞在哪、要怎麼改
 
 ## 發布注意事項
@@ -55,6 +54,6 @@ Closes #
 
 - [ ] 已 rebase 至 `main` 最新狀態
 - [ ] `bun run check` 與 `bun test` 綠
-- [ ] 動到 `scripts/issue-map-model.ts` 時已跑過 `bun run mutate`
+- [ ] 動到 `src/issue-map-model.ts` 時已跑過 `bun run mutate`
 - [ ] 行為或設定有變時已更新 [README.md](../README.md)
 - [ ] commit 訊息用 Conventional Commits（繁中描述）——release-please 靠它決定版號
