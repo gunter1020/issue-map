@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/gunter1020/issue-map/compare/v0.4.0...v0.5.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **fetch:** ISSUE_MAP_PARENT_HEADING 的預設值由 `Parent` 改成未設。靠內文 `## Parent` 慣例標記母子關係的 repo 要明確設定 `ISSUE_MAP_PARENT_HEADING=Parent` 才會照舊；用 GitHub 原生 sub-issue 的 repo 不受影響。
+
+### Bug Fixes
+
+* **build:** 沒有任何 issue 的 repo 也要產得出圖 ([fe33502](https://github.com/gunter1020/issue-map/commit/fe33502b418befcd100a7793976e713ed3647fa3))
+* **map:** 被擋著的主票下一步改講阻擋者，不再說可以關掉了 ([b5ae001](https://github.com/gunter1020/issue-map/commit/b5ae00156c4f517e1f2bd69a8ddeb898f2a2bd76))
+* **page:** 頁尾不再把逃脫顯示給使用者看 ([75384b0](https://github.com/gunter1020/issue-map/commit/75384b0c0772de5d9b0eb972bdb128efbdf27123))
+* **view:** 三層以上的 parent 鏈不再重複渲染同一張票 ([5efe00c](https://github.com/gunter1020/issue-map/commit/5efe00c54a9156ef131f7c949a11e8407011b5d9))
+* **view:** 頁尾照實說這一次有沒有套用 triage 閘門 ([a585e3c](https://github.com/gunter1020/issue-map/commit/a585e3c43986a3ecb44c5b3a9a4453e2148a2935))
+
+
+### Performance Improvements
+
+* **fetch:** gh 查詢改非同步，互不相干的批次一起送 ([fa1e959](https://github.com/gunter1020/issue-map/commit/fa1e959a6065b232beb215521cb6038e291cad1b))
+* **fetch:** 內文改成設了 ISSUE_MAP_PARENT_HEADING 才抓 ([55f52ef](https://github.com/gunter1020/issue-map/commit/55f52efa16a5815d9f34864bf46a29c9c7bb5a9b))
+
 ## [0.4.0](https://github.com/gunter1020/issue-map/compare/v0.3.1...v0.4.0) (2026-09-11)
 
 
