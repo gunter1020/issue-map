@@ -61,7 +61,7 @@ Everything has a default — it runs with nothing set. The defaults live in `CON
 | Environment variable       | Default                           | Meaning                                                                        |
 | -------------------------- | --------------------------------- | ------------------------------------------------------------------------------ |
 | `GH_REPO`                  | inferred from the git in cwd      | Map another repo (`gh`'s own variable; forks and multiple remotes are its job) |
-| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | Body heading under which a sub-issue points at its parent                      |
+| `ISSUE_MAP_PARENT_HEADING` | unset (bodies are not fetched)    | Body heading under which a sub-issue points at its parent. Set it to opt in    |
 | `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | Not assessed yet, cannot be handed to anyone                                   |
 | `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | Assessed and ready to work on                                                  |
 | `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | Somebody is on it, with or without an assignee                                 |
@@ -82,6 +82,9 @@ Three worth knowing:
   [`implement`](https://github.com/mattpocock/skills/tree/main/skills/engineering/implement) and
   [`triage`](https://github.com/mattpocock/skills/tree/main/skills/engineering/triage) skills. Point
   them at something that exists in the target repo, or the map tells people to run what isn't there.
+- **The body convention is opt-in.** Issue bodies are over 90% of what the GitHub response
+  weighs, and they feed one regex — nothing else on the page uses them. So they are only fetched
+  when `ISSUE_MAP_PARENT_HEADING` is set. Native sub-issues need no setting and always win.
 - **Closed siblings need native sub-issues.** The map asks GitHub only for the closed issues an
   open one still points at, and children come from the native sub-issue relation. With the
   `## Parent` body convention a group's _closed_ children never appear, so its progress looks

@@ -48,8 +48,13 @@ function labelList(raw: string | undefined, fallback: string): readonly string[]
  * repo 不在這裡：那是 `gh` 自己的 `GH_REPO`，fork 與多 remote 的判斷也一併交給它。
  */
 const CONFIG = {
-  /** 子票在內文裡指向 parent 的標題。GitHub 原生 sub-issue 有值時優先用原生的。 */
-  parentHeading: process.env.ISSUE_MAP_PARENT_HEADING ?? 'Parent',
+  /**
+   * 子票在內文裡指向 parent 的標題，例如 `Parent`。**沒設就不讀內文**，也就不會去抓內文。
+   *
+   * 內文佔了回應的九成以上，而它只餵這一條 regex；用 GitHub 原生 sub-issue 的 repo 一個字都
+   * 用不到。所以這條慣例改成明講才生效——原生關係一律優先，設了也不會蓋過它。
+   */
+  parentHeading: process.env.ISSUE_MAP_PARENT_HEADING ?? '',
   /** 掛了就是還沒評估完，不能交給誰做。 */
   unready: labelList(process.env.ISSUE_MAP_LABELS_UNREADY, 'needs-triage,needs-info'),
   /** 掛了才算評估完、可以動工。 */
@@ -72,7 +77,8 @@ export type RawIssue = {
   readonly title: string
   readonly state: IssueState
   readonly url: string
-  readonly body: string
+  /** 只有設了 `ISSUE_MAP_PARENT_HEADING` 才會去抓，其餘時候不存在。 */
+  readonly body?: string
   readonly closedAt: string | null
   /** 開票的人。GitHub 帳號被刪掉的話是 null。 */
   readonly author: { readonly login: string } | null
@@ -91,8 +97,11 @@ interface Page<T> {
   nodes: T[]
 }
 
+/** 內文只餵 `PARENT_IN_BODY` 一條 regex，沒設慣例就不要去抓——它佔了回應的九成以上。 */
+const BODY_FIELD = CONFIG.parentHeading ? ' body' : ''
+
 const ISSUE_FIELDS = `
-  number title state url body closedAt
+  number title state url closedAt${BODY_FIELD}
   author { login }
   parent { number }
   labels(first: 20) { nodes { name } }
@@ -307,11 +316,33 @@ async function fetchChildren(parents: readonly number[]): Promise<ChildState[]> 
   return children
 }
 
-/** 原生 sub-issue 優先；沒有就讀內文的 `## <標題>` 之後第一個 `#<n>`。 */
-const PARENT_IN_BODY = new RegExp(`##\\s*${CONFIG.parentHeading}\\s*\\n[\\s\\S]*?#(\\d+)`)
-export function withParent(raw: RawIssue): Issue {
-  const inBody = PARENT_IN_BODY.exec(raw.body)
-  return { ...raw, parentNumber: raw.parent?.number ?? (inBody ? Number(inBody[1]) : null) }
+/** 一個標題對應一條 regex，組過就留著——每張票各組一次沒有意義。 */
+const PATTERNS = new Map<string, RegExp>()
+function bodyPattern(heading: string): RegExp {
+  const cached = PATTERNS.get(heading)
+  if (cached) return cached
+  const made = new RegExp(`##\\s*${heading}\\s*\\n[\\s\\S]*?#(\\d+)`)
+  PATTERNS.set(heading, made)
+  return made
+}
+
+/**
+ * 內文裡指向 parent 的票號：`## <標題>` 之後第一個 `#<n>`。
+ *
+ * 標題是空的就不讀——那時內文根本沒被抓下來。標題走參數而不是直接讀環境變數，這條慣例才測得到。
+ */
+export function parentInBody(body: string | undefined, heading: string): number | null {
+  if (!heading || !body) return null
+  const found = bodyPattern(heading).exec(body)
+  return found ? Number(found[1]) : null
+}
+
+/** 原生 sub-issue 優先；沒有才看內文的慣例。 */
+export function withParent(raw: RawIssue, heading = CONFIG.parentHeading): Issue {
+  return {
+    ...raw,
+    parentNumber: raw.parent?.number ?? parentInBody(raw.body, heading),
+  }
 }
 
 /**
@@ -345,12 +376,12 @@ export function keptClosed(open: readonly Issue[], fetched: readonly RawIssue[])
   const openNumbers = new Set(open.map((issue) => issue.number))
   return dedupe(fetched)
     .filter((issue) => issue.state === 'CLOSED' && !openNumbers.has(issue.number))
-    .map(withParent)
+    .map((issue) => withParent(issue))
 }
 
 export async function takeSnapshot(): Promise<Snapshot> {
   const { nameWithOwner, open: rawOpen } = await fetchOpen()
-  const open = rawOpen.map(withParent)
+  const open = rawOpen.map((issue) => withParent(issue))
   const wanted = wantedClosed(open)
 
   // 先用最便宜的一趟問出子票的狀態，再讓完整欄位只抓一次、只抓真的要留下的那些。

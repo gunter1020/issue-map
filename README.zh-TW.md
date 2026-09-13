@@ -59,7 +59,7 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 | 環境變數                   | 預設                              | 意思                                                   |
 | -------------------------- | --------------------------------- | ------------------------------------------------------ |
 | `GH_REPO`                  | 從 cwd 的 git 推斷                | 要畫別的 repo 時設它（`gh` 自己的變數，fork 也交給它） |
-| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | 子票在內文指向母票的段落標題                           |
+| `ISSUE_MAP_PARENT_HEADING` | 未設（不抓內文）                  | 子票在內文指向母票的段落標題。設了才會讀內文           |
 | `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | 還沒評估完，不能交給誰做                               |
 | `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | 評估完、可以動工                                       |
 | `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | 有人在做，不必有 assignee                              |
@@ -77,6 +77,9 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
   做」這個標籤。）
 - **指令名。** `/implement`、`/triage` 就是那邊的 [`implement`](https://github.com/mattpocock/skills/tree/main/skills/engineering/implement) 與
   [`triage`](https://github.com/mattpocock/skills/tree/main/skills/engineering/triage) skill。要指向目標 repo 真的有的東西，不然圖上會叫人跑不存在的。
+- **內文慣例要明講才生效。** 內文佔了 GitHub 回應九成以上的重量，而它只餵一條 regex，頁面上
+  沒有別的地方用得到。所以只有設了 `ISSUE_MAP_PARENT_HEADING` 才會去抓內文。原生 sub-issue
+  不必設定，而且一律優先。
 - **已完成的兄弟票要靠原生 sub-issue。** 地圖只跟 GitHub 要 open 票還牽著的 closed 票，而子票是從
   原生的 sub-issue 關係拿的。用 `## Parent` 內文慣例的 repo 看不到一組裡**已完成**的子票，那一組的
   進度會比實際少。把子票在票頁的 Sub-issues 關聯上去一次就會回來；內文慣例可以留著，原生的本來

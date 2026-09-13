@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { assemble, keptClosed, type RawIssue, wantedClosed, withParent } from '../src/issue-map.ts'
+import {
+  assemble,
+  keptClosed,
+  parentInBody,
+  type RawIssue,
+  wantedClosed,
+  withParent,
+} from '../src/issue-map.ts'
 
 /**
  * 抓回來之後的推導：要指名去要哪幾張 closed、怎麼折成一份快照。
@@ -37,13 +44,13 @@ describe('內文裡的 parent', () => {
    * 真正的 sub-issue 關係——地圖分組跟 GitHub 看到的就對不起來。
    */
   test('有原生 parent 就不看內文', () => {
-    const issue = withParent(raw(5, { parent: { number: 9 }, body: '## Parent\n\n#77' }))
+    const issue = withParent(raw(5, { parent: { number: 9 }, body: '## Parent\n\n#77' }), 'Parent')
     expect(issue.parentNumber).toBe(9)
   })
 
-  /** 沒有原生關係時才讀內文的 `## Parent` 之後第一個票號。 */
+  /** 沒有原生關係時才讀內文的 `## <標題>` 之後第一個票號。 */
   test('沒有原生 parent 就讀內文標題後的第一個票號', () => {
-    expect(withParent(raw(5, { body: '## Parent\n\n見 #77 與 #88' })).parentNumber).toBe(77)
+    expect(parentInBody('## Parent\n\n見 #77 與 #88', 'Parent')).toBe(77)
   })
 
   /**
@@ -53,7 +60,18 @@ describe('內文裡的 parent', () => {
    * 收合全跟著錯。
    */
   test('沒有那個標題就沒有 parent', () => {
-    expect(withParent(raw(5, { body: '跟 #12 有關' })).parentNumber).toBeNull()
+    expect(parentInBody('跟 #12 有關', 'Parent')).toBeNull()
+  })
+
+  /**
+   * 守的是「沒設標題就完全不讀內文」。
+   *
+   * 壞了會怎樣：沒設標題時內文根本沒被抓下來，所以這條路必須是關的；真的去讀的話，只有在某些
+   * repo 才有內文的情況下會讀到不一致的結果。
+   */
+  test('標題是空的就不讀內文', () => {
+    expect(parentInBody('## Parent\n\n#77', '')).toBeNull()
+    expect(withParent(raw(5, { body: '## Parent\n\n#77' }), '').parentNumber).toBeNull()
   })
 })
 
@@ -66,7 +84,7 @@ describe('要指名去要哪幾張 closed', () => {
    */
   test('阻擋者與 parent 都要，已經在 open 的不要', () => {
     const open = [raw(1, { blockedBy: blockedBy(2, 50) }), raw(2, { parent: { number: 90 } })].map(
-      withParent,
+      (issue) => withParent(issue),
     )
 
     const wanted = wantedClosed(open)
@@ -77,7 +95,7 @@ describe('要指名去要哪幾張 closed', () => {
   /** 同一張票同時是好幾張的阻擋者時只要一次。 */
   test('重複的票號收斂成一個', () => {
     const open = [raw(1, { blockedBy: blockedBy(9) }), raw(2, { blockedBy: blockedBy(9) })].map(
-      withParent,
+      (issue) => withParent(issue),
     )
     expect(wantedClosed(open).numbers).toEqual([9])
   })
@@ -91,7 +109,7 @@ describe('指名要回來之後留下哪些', () => {
    * 兩列同號的票，統計也跟著多算。
    */
   test('還開著的不留', () => {
-    const open = [raw(1)].map(withParent)
+    const open = [raw(1)].map((issue) => withParent(issue))
     const fetched = [raw(2), raw(3, { state: 'CLOSED' })]
 
     expect(keptClosed(open, fetched).map((issue) => issue.number)).toEqual([3])
@@ -99,7 +117,7 @@ describe('指名要回來之後留下哪些', () => {
 
   /** 已經在 open 那包的票不會再留一份，即使 GitHub 把它當 closed 回來。 */
   test('已經在 open 那包的不留', () => {
-    const open = [raw(1)].map(withParent)
+    const open = [raw(1)].map((issue) => withParent(issue))
     expect(keptClosed(open, [raw(1, { state: 'CLOSED' })])).toEqual([])
   })
 
@@ -120,11 +138,11 @@ describe('折成快照', () => {
   test('還開著的子票才算進主票的等待', () => {
     // 開著與關掉的張數刻意不同：一樣的話，數錯邊也會得到同一個數字。
     const open = [raw(1), raw(2, { parent: { number: 1 } }), raw(3, { parent: { number: 1 } })].map(
-      withParent,
+      (issue) => withParent(issue),
     )
     const closed = [
       raw(4, { parent: { number: 1 }, state: 'CLOSED', closedAt: '2026-01-01T00:00:00.000Z' }),
-    ].map(withParent)
+    ].map((issue) => withParent(issue))
 
     const snapshot = assemble('owner/repo', open, closed)
     const parent = snapshot.issues.find((issue) => issue.number === 1)
@@ -141,7 +159,11 @@ describe('折成快照', () => {
    * 讀的就是這個判定，說詞也會跟著錯。
    */
   test('一張角色標籤都沒看到就不套閘門', () => {
-    const snapshot = assemble('owner/repo', [raw(1)].map(withParent), [])
+    const snapshot = assemble(
+      'owner/repo',
+      [raw(1)].map((issue) => withParent(issue)),
+      [],
+    )
 
     expect(snapshot.labels.gated).toBe(false)
     expect(snapshot.issues[0]?.status).toBe('ready')
@@ -149,7 +171,9 @@ describe('折成快照', () => {
 
   /** 看得到任何一個角色標籤，閘門就套上，沒掛的票變成待 triage。 */
   test('看得到角色標籤就套閘門', () => {
-    const open = [raw(1, { labels: labelled('ready-for-agent') }), raw(2)].map(withParent)
+    const open = [raw(1, { labels: labelled('ready-for-agent') }), raw(2)].map((issue) =>
+      withParent(issue),
+    )
     const snapshot = assemble('owner/repo', open, [])
 
     expect(snapshot.labels.gated).toBe(true)
@@ -164,9 +188,9 @@ describe('折成快照', () => {
    * 要回答的問題。
    */
   test('已關掉的阻擋者不再是閘門', () => {
-    const open = [raw(1, { blockedBy: blockedBy(2) })].map(withParent)
+    const open = [raw(1, { blockedBy: blockedBy(2) })].map((issue) => withParent(issue))
     const closed = [raw(2, { state: 'CLOSED', closedAt: '2026-01-01T00:00:00.000Z' })].map(
-      withParent,
+      (issue) => withParent(issue),
     )
 
     const issue = assemble('owner/repo', open, closed).issues.find((i) => i.number === 1)
@@ -177,8 +201,8 @@ describe('折成快照', () => {
 
   /** 票照票號排序，兩邊的票混在一起也是同一條規則。 */
   test('票照票號排序', () => {
-    const open = [raw(5), raw(1)].map(withParent)
-    const closed = [raw(3, { state: 'CLOSED' })].map(withParent)
+    const open = [raw(5), raw(1)].map((issue) => withParent(issue))
+    const closed = [raw(3, { state: 'CLOSED' })].map((issue) => withParent(issue))
 
     expect(assemble('owner/repo', open, closed).issues.map((issue) => issue.number)).toEqual([
       1, 3, 5,

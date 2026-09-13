@@ -63,7 +63,7 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 | 環境変数                   | 既定                              | 意味                                                       |
 | -------------------------- | --------------------------------- | ---------------------------------------------------------- |
 | `GH_REPO`                  | cwd の git から推測               | 別の repo を描くときに設定（`gh` 自身の変数。fork も同様） |
-| `ISSUE_MAP_PARENT_HEADING` | `Parent`                          | サブチケットが本文で親を指す見出し                         |
+| `ISSUE_MAP_PARENT_HEADING` | 未設定（本文は取得しない）        | サブチケットが本文で親を指す見出し。設定すると本文を読む   |
 | `ISSUE_MAP_LABELS_UNREADY` | `needs-triage,needs-info`         | 未評価で、まだ誰にも渡せない                               |
 | `ISSUE_MAP_LABELS_READY`   | `ready-for-agent,ready-for-human` | 評価済み・着手可                                           |
 | `ISSUE_MAP_LABELS_ACTIVE`  | `in-progress`                     | 誰かが対応中（assignee がなくてもよい）                    |
@@ -82,6 +82,9 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 - **コマンド名。** `/implement` と `/triage` は向こうの [`implement`](https://github.com/mattpocock/skills/tree/main/skills/engineering/implement) と
   [`triage`](https://github.com/mattpocock/skills/tree/main/skills/engineering/triage) skill です。対象 repo に実在するものを指すようにしてください。さもないと、
   存在しないものを走らせろとマップが指示します。
+- **本文の慣習はオプトイン。** 本文は GitHub のレスポンスの 9 割以上を占めるのに、正規表現
+  ひとつを通すだけで、ページの他のどこでも使われません。そのため `ISSUE_MAP_PARENT_HEADING`
+  を設定したときだけ本文を取得します。ネイティブ sub-issue は設定不要で、常に優先されます。
 - **クローズ済みの兄弟にはネイティブ sub-issue が要る。** マップが問い合わせるクローズ済みチケット
   は、open なチケットがまだ指しているものだけで、子チケットはネイティブの sub-issue 関係から取り
   ます。`## Parent` の本文慣例を使う repo ではグループ内の**クローズ済み**の子が出てこず、進捗が
