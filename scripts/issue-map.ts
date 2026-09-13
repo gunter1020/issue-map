@@ -64,7 +64,7 @@ const CONFIG = {
   triageCommand: process.env.ISSUE_MAP_CMD_TRIAGE ?? '/triage',
 } as const
 
-type IssueState = 'OPEN' | 'CLOSED'
+export type IssueState = 'OPEN' | 'CLOSED'
 
 type RawIssue = {
   readonly number: number
@@ -305,7 +305,9 @@ export function takeSnapshot(): Snapshot {
   const triaged = [...CONFIG.unready, ...CONFIG.ready].some((name) => seen.has(name))
 
   const issues = kept
-    .map((raw) => describeIssue(raw, { open: openNumbers, openChildren, parents, triaged }))
+    .map((raw) =>
+      describeIssue(raw, { open: openNumbers, openChildren, parents, triaged, rules: CONFIG }),
+    )
     .toSorted((a, b) => a.number - b.number)
   return {
     generatedAt: new Date().toISOString(),
@@ -326,56 +328,88 @@ function isNumber(value: number | null): value is number {
   return value !== null
 }
 
-interface Context {
-  readonly open: Set<number>
-  /** 每張主票底下還開著的子票。主票的狀態看的是這個，不是自己的阻擋者。 */
-  readonly openChildren: Map<number, number>
-  readonly parents: Set<number>
-  /** 這個 repo 有在用 triage 標籤，狀態才把它們當閘門。 */
-  readonly triaged: boolean
+/** 狀態機吃的字彙與指令。`CONFIG` 就是這個形狀，抽出來是為了讓規則本身測得到。 */
+export type Rules = Pick<
+  typeof CONFIG,
+  'unready' | 'ready' | 'active' | 'human' | 'implementCommand' | 'triageCommand'
+>
+
+/** 判狀態要用到的、這張票自己的事實。刻意不含標題與網址那些只拿去顯示的欄位。 */
+export interface IssueFacts {
+  readonly number: number
+  readonly state: IssueState
+  readonly labels: readonly string[]
+  readonly assignees: readonly string[]
+  /** 全部的阻擋者，含已關掉的。哪些還算閘門由這裡自己濾。 */
+  readonly blockedBy: readonly number[]
 }
 
-function describeIssue(raw: Issue, context: Context): MapIssue {
-  const labels = raw.labels.nodes.map((label) => label.name)
-  const assignees = raw.assignees.nodes.map((assignee) => assignee.login)
-  const blockedBy = raw.blockedBy.nodes.map((blocker) => blocker.number)
+/** 判狀態要用到的、整個 repo 的事實。 */
+export interface RepoFacts {
+  readonly open: ReadonlySet<number>
+  /** 每張主票底下還開著的子票。主票的狀態看的是這個，不是自己的阻擋者。 */
+  readonly openChildren: ReadonlyMap<number, number>
+  readonly parents: ReadonlySet<number>
+  /** 這個 repo 有在用 triage 標籤，狀態才把它們當閘門。 */
+  readonly triaged: boolean
+  readonly rules: Rules
+}
+
+/** 一張票的判定結果。`MapIssue` 其餘欄位都只是把原始資料抄過去。 */
+export type Verdict = Pick<MapIssue, 'waitingFor' | 'status' | 'nextStep' | 'isParent'>
+
+/**
+ * 這個工具的核心語意：一張票是什麼狀態、在等誰、下一步該做什麼。
+ *
+ * 純函式——所有輸入都在參數裡，沒有 `gh`、沒有時間、沒有環境變數（字彙走 `rules`）。
+ */
+export function verdictOf(issue: IssueFacts, repo: RepoFacts): Verdict {
+  const { rules } = repo
   // 只有還開著的阻擋者算閘門；GitHub 的 blocked_by 摘要也是這樣算的。
-  const waitingFor = blockedBy.filter((number) => context.open.has(number))
-  const isParent = context.parents.has(raw.number)
-  const has = (names: readonly string[]) => names.some((name) => labels.includes(name))
+  const waitingFor = issue.blockedBy.filter((number) => repo.open.has(number))
+  const isParent = repo.parents.has(issue.number)
+  const openChildren = repo.openChildren.get(issue.number) ?? 0
+  const has = (names: readonly string[]) => names.some((name) => issue.labels.includes(name))
 
   function statusOf(): Status {
-    if (raw.state === 'CLOSED') return 'done'
+    if (issue.state === 'CLOSED') return 'done'
     // Parent 自己不做事，看的是子票：還有子票開著就是還在等。
-    if (isParent) {
-      return waitingFor.length || (context.openChildren.get(raw.number) ?? 0) ? 'blocked' : 'ready'
-    }
+    if (isParent) return waitingFor.length || openChildren ? 'blocked' : 'ready'
     // 沒掛角色標籤的票還沒被評估過，不能因為沒人擋它就當成可接手。
-    if (context.triaged && (has(CONFIG.unready) || !has(CONFIG.ready))) return 'triage'
-    if (assignees.length || has(CONFIG.active)) return 'active'
+    if (repo.triaged && (has(rules.unready) || !has(rules.ready))) return 'triage'
+    if (issue.assignees.length || has(rules.active)) return 'active'
     return waitingFor.length ? 'blocked' : 'ready'
   }
 
   /** 只算出「是哪一種下一步」。句子是頁面的事，在 `issue-map-i18n.ts` 依語言組出來。 */
   function nextStepOf(status: Status): NextStep {
     if (status === 'done') return { kind: 'none' }
-    if (status === 'triage') return { kind: 'command', command: CONFIG.triageCommand }
+    if (status === 'triage') return { kind: 'command', command: rules.triageCommand }
     if (status === 'active') {
       // 沒有 assignee 但掛了 active 標籤時，能講的就只有那個標籤名。
-      const label = CONFIG.active[0]
-      return { kind: 'active', who: assignees.length ? assignees : label ? [label] : [] }
+      const label = rules.active[0]
+      return {
+        kind: 'active',
+        who: issue.assignees.length ? issue.assignees : label ? [label] : [],
+      }
     }
     if (isParent) {
-      const left = context.openChildren.get(raw.number) ?? 0
-      return left ? { kind: 'waitChildren', count: left } : { kind: 'parentReady' }
+      return openChildren ? { kind: 'waitChildren', count: openChildren } : { kind: 'parentReady' }
     }
     if (status === 'blocked') return { kind: 'waitIssues', issues: waitingFor }
-    return has(CONFIG.human)
+    return has(rules.human)
       ? { kind: 'manual' }
-      : { kind: 'command', command: CONFIG.implementCommand }
+      : { kind: 'command', command: rules.implementCommand }
   }
 
   const status = statusOf()
+  return { waitingFor, status, nextStep: nextStepOf(status), isParent }
+}
+
+function describeIssue(raw: Issue, repo: RepoFacts): MapIssue {
+  const labels = raw.labels.nodes.map((label) => label.name)
+  const assignees = raw.assignees.nodes.map((assignee) => assignee.login)
+  const blockedBy = raw.blockedBy.nodes.map((blocker) => blocker.number)
   return {
     number: raw.number,
     title: raw.title,
@@ -386,10 +420,7 @@ function describeIssue(raw: Issue, context: Context): MapIssue {
     assignees,
     parent: raw.parentNumber,
     blockedBy,
-    waitingFor,
-    status,
-    nextStep: nextStepOf(status),
-    isParent,
+    ...verdictOf({ number: raw.number, state: raw.state, labels, assignees, blockedBy }, repo),
   }
 }
 
