@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * 開發地圖：把 GitHub Issues 的阻擋關係抓下來，塞進 `scripts/issue-map.html` 這份樣板，產出一頁
+ * 開發地圖：把 GitHub Issues 的阻擋關係抓下來，塞進 `src/issue-map.html` 這份樣板，產出一頁
  * 可以直接看的 HTML。每張票的狀態、在等誰、下一步都在這裡算完才送進頁面，樣板只負責畫。
  *
  * 帶進快照的 issue：所有 open issue，加上仍被 open issue 牽著的 closed issue（畫成「已完成」的
@@ -9,7 +9,7 @@
  * 完成的兄弟票要靠 GitHub 原生 sub-issue 才抽得到，用內文 `## Parent` 慣例的 repo 看不到它們，
  * 那一組的進度會比實際少。
  *
- * 用法：`bun run scripts/issue-map.ts [out.html]`，預設寫到 `dist/issue-map.html`。
+ * 用法：`bun run src/issue-map.ts [out.html]`，預設寫到 `dist/issue-map.html`。
  * 環境變數與設計決定見 README；移植要調的東西在底下的 `CONFIG`。
  */
 

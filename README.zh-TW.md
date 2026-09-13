@@ -54,7 +54,7 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 
 ## 設定
 
-全部有預設值，一個都不設也跑得起來。預設值長在 `scripts/issue-map.ts` 的 `CONFIG`。
+全部有預設值，一個都不設也跑得起來。預設值長在 `src/issue-map.ts` 的 `CONFIG`。
 
 | 環境變數                   | 預設                              | 意思                                                   |
 | -------------------------- | --------------------------------- | ------------------------------------------------------ |
@@ -88,15 +88,15 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 
 ## 檔案
 
-| 檔案                         | 責任                                                     |
-| ---------------------------- | -------------------------------------------------------- |
-| `scripts/issue-map.ts`       | 抓快照、算狀態與下一步、產出 HTML。設定在裡面的 `CONFIG` |
-| `scripts/issue-map-model.ts` | 純資料模型：分組、關鍵路徑、排版。前後端共用             |
-| `scripts/issue-map-i18n.ts`  | 四種語言的文案與查表                                     |
-| `scripts/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                      |
-| `scripts/issue-map.html`     | 樣板。兩個佔位區塊會被填入                               |
-| `scripts/issue-map-serve.ts` | 本機 server，每個請求重抓一次                            |
-| `scripts/mutate.ts`          | 突變測試：改壞一行看測試會不會紅                         |
+| 檔案                     | 責任                                                     |
+| ------------------------ | -------------------------------------------------------- |
+| `src/issue-map.ts`       | 抓快照、算狀態與下一步、產出 HTML。設定在裡面的 `CONFIG` |
+| `src/issue-map-model.ts` | 純資料模型：分組、關鍵路徑、排版。前後端共用             |
+| `src/issue-map-i18n.ts`  | 四種語言的文案與查表                                     |
+| `src/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                      |
+| `src/issue-map.html`     | 樣板。兩個佔位區塊會被填入                               |
+| `src/issue-map-serve.ts` | 本機 server，每個請求重抓一次                            |
+| `tools/mutate.ts`        | 突變測試：改壞一行看測試會不會紅                         |
 
 ## 在這個 repo 裡開發
 
@@ -114,10 +114,10 @@ bun test                  # 純模型那一層
 要走反向驗證——把它宣稱要擋的缺陷放回產品碼，確認它會紅：
 
 ```bash
-bun run mutate scripts/issue-map-model.ts tests/issue-map-layout.test.ts
+bun run mutate src/issue-map-model.ts tests/issue-map-layout.test.ts
 ```
 
-**要動 `scripts/issue-map-i18n.ts`。** `EN` 是原稿，也是鍵的定義處；三份翻譯的型別由它推導，少一個
+**要動 `src/issue-map-i18n.ts`。** `EN` 是原稿，也是鍵的定義處；三份翻譯的型別由它推導，少一個
 鍵或少一個 `{n}` 代入名，`bun run typecheck` 就會紅。英文要分單複數的鍵寫成 `{ one, other }`，中日
 文寫一句字串就好。模型那一側不算句子——`nextStep` 是 `{ kind: 'waitChildren', count: 2 }` 這種結構
 化的值，話在這裡才組出來。

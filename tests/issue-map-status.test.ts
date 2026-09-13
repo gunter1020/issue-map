@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { type IssueFacts, type RepoFacts, type Rules, verdictOf } from '../scripts/issue-map.ts'
+import { type IssueFacts, type RepoFacts, type Rules, verdictOf } from '../src/issue-map.ts'
 
 /**
  * 狀態機：一張票被畫成 ready / active / blocked / triage / done，還在等誰，下一步顯示什麼。

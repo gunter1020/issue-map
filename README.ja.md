@@ -57,7 +57,7 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 
 ## 設定
 
-すべて既定値があり、何も設定しなくても動きます。既定値は `scripts/issue-map.ts` の `CONFIG` に
+すべて既定値があり、何も設定しなくても動きます。既定値は `src/issue-map.ts` の `CONFIG` に
 あります。
 
 | 環境変数                   | 既定                              | 意味                                                       |
@@ -95,15 +95,15 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 
 ## ファイル
 
-| ファイル                     | 責務                                                                   |
-| ---------------------------- | ---------------------------------------------------------------------- |
-| `scripts/issue-map.ts`       | スナップショット取得、状態と次の一手の導出、HTML 生成。設定は `CONFIG` |
-| `scripts/issue-map-model.ts` | 純粋なデータモデル：グルーピング、クリティカルパス、レイアウト         |
-| `scripts/issue-map-i18n.ts`  | 4 言語の文言と引き当て                                                 |
-| `scripts/issue-map-page.ts`  | ブラウザ側のコード。ビルド時に HTML へバンドルされる                   |
-| `scripts/issue-map.html`     | テンプレート。2 つのプレースホルダが埋められる                         |
-| `scripts/issue-map-serve.ts` | ローカル server。リクエストごとに取り直す                              |
-| `scripts/mutate.ts`          | ミューテーションテスト：1 行を壊してテストが赤くなるか見る             |
+| ファイル                 | 責務                                                                   |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `src/issue-map.ts`       | スナップショット取得、状態と次の一手の導出、HTML 生成。設定は `CONFIG` |
+| `src/issue-map-model.ts` | 純粋なデータモデル：グルーピング、クリティカルパス、レイアウト         |
+| `src/issue-map-i18n.ts`  | 4 言語の文言と引き当て                                                 |
+| `src/issue-map-page.ts`  | ブラウザ側のコード。ビルド時に HTML へバンドルされる                   |
+| `src/issue-map.html`     | テンプレート。2 つのプレースホルダが埋められる                         |
+| `src/issue-map-serve.ts` | ローカル server。リクエストごとに取り直す                              |
+| `tools/mutate.ts`        | ミューテーションテスト：1 行を壊してテストが赤くなるか見る             |
 
 ## この repo で開発する
 
@@ -123,10 +123,10 @@ bun test                  # 純粋なモデル層
 製品コードに戻し、赤くなることを確かめます：
 
 ```bash
-bun run mutate scripts/issue-map-model.ts tests/issue-map-layout.test.ts
+bun run mutate src/issue-map-model.ts tests/issue-map-layout.test.ts
 ```
 
-**`scripts/issue-map-i18n.ts` を触るとき。** `EN` が原稿であり、キーの定義場所です。3 つの翻訳の型
+**`src/issue-map-i18n.ts` を触るとき。** `EN` が原稿であり、キーの定義場所です。3 つの翻訳の型
 はそこから導かれるので、キーや `{n}` の差し込み名が 1 つ欠けると `bun run typecheck` が赤くなります。
 英語で単複を分けるキーは `{ one, other }`、中国語と日本語は 1 本の文字列で構いません。モデル側は文
 を組み立てません——`nextStep` は `{ kind: 'waitChildren', count: 2 }` のような構造化された値で、

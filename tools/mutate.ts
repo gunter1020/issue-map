@@ -13,8 +13,8 @@
  * `typechecks`），所以每個 mutant 都還要實際過一次 `tsc`。
  *
  * 用法：
- *   bun run scripts/mutate.ts scripts/issue-map-model.ts tests/issue-map-layout.test.ts
- *   bun run scripts/mutate.ts scripts/issue-map-model.ts   # 不給測試檔就跑全套
+ *   bun run tools/mutate.ts src/issue-map-model.ts tests/issue-map-layout.test.ts
+ *   bun run tools/mutate.ts src/issue-map-model.ts   # 不給測試檔就跑全套
  */
 
 import { spawn } from 'bun'
@@ -153,7 +153,7 @@ const EXIT_CODE: Readonly<Record<Signal, number>> = { SIGINT: 130, SIGTERM: 143 
 const main = async (): Promise<number> => {
   const [target, ...testTargets] = process.argv.slice(2)
   if (target === undefined) {
-    console.error('用法：bun run scripts/mutate.ts <原始碼檔> [測試檔...]')
+    console.error('用法：bun run tools/mutate.ts <原始碼檔> [測試檔...]')
     return 1
   }
 
