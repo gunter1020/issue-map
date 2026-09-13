@@ -92,7 +92,8 @@ export type RawIssue = {
 /** 一路帶著算好的 parent，免得同一段內文被 regex 掃好幾次。 */
 export type Issue = RawIssue & { readonly parentNumber: number | null }
 
-interface Page<T> {
+/** GraphQL 的一頁。`collect` 吃的就是這個形狀。 */
+export interface Page<T> {
   pageInfo: { hasNextPage: boolean; endCursor: string | null }
   nodes: T[]
 }
@@ -174,7 +175,7 @@ async function run<T>(query: string, variables: Record<string, string> = {}): Pr
  *
  * 分頁的終止條件只有這一份——各寫一份的話兩邊會漂移，而漂移的那一邊要真的打 GitHub 才看得出來。
  */
-async function collect<T>(
+export async function collect<T>(
   pageAt: (after: string | null) => Promise<Page<T> | null>,
   from: string | null = null,
 ): Promise<T[]> {
