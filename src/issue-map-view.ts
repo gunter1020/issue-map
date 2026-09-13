@@ -8,9 +8,10 @@
  * 文案一律走 `issue-map-i18n.ts` 的 `t()`，它讀的是當下語言。
  */
 
-import { locale, t } from './issue-map-i18n.ts'
+import { LOCALE_NAME, LOCALES, locale, t } from './issue-map-i18n.ts'
 import {
   type Edge,
+  edgesWithin,
   type Group,
   layoutOf,
   type Layout,
@@ -32,6 +33,14 @@ const ESCAPES: Readonly<Record<string, string>> = {
 
 export function esc(text: string): string {
   return text.replace(/[&<>"]/g, (c) => ESCAPES[c] ?? c)
+}
+
+/**
+ * 語言選單的選項。建置時先畫一份進樣板，畫面那一側重建選單時用的是同一支——這一支檔案是標記
+ * 的唯一產生處，選單也不例外。
+ */
+export function langOptionsHTML(): string {
+  return LOCALES.map((l) => `<option value="${l}">${esc(LOCALE_NAME[l])}</option>`).join('')
 }
 
 /**
@@ -67,12 +76,12 @@ export type Filter = Status | 'all'
  * 先算一次衍生資料（計數、反向索引），再把畫的函式掛上去——兩側都只要 `viewOf(snapshot)` 一次
  * 就能重複畫。
  */
-export function viewOf(snapshot: Partial<Snapshot>) {
-  const issues: readonly MapIssue[] = snapshot.issues ?? []
+export function viewOf(snapshot: Snapshot) {
+  const issues: readonly MapIssue[] = snapshot.issues
   const byNumber = new Map(issues.map((issue) => [issue.number, issue]))
   const work = issues.filter((issue) => !issue.isParent)
-  const criticalPath = snapshot.criticalPath ?? 0
-  const repo = snapshot.repo ?? ''
+  const criticalPath = snapshot.criticalPath
+  const repo = snapshot.repo
 
   const counts = Object.fromEntries(
     STATUS_ORDER.map((status) => [status, work.filter((i) => i.status === status).length]),
@@ -95,6 +104,13 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.number - b.number
 
   const statusLabel = (status: Status): string => t(`status.${status}`)
+
+  /**
+   * 現在可動的票，照清單的順序。導言與詳細面板的預設那一張都讀它——兩邊各算一次的話，導言說
+   * 「最前面是 #N」而面板開的卻是別張。
+   */
+  const frontline = (): MapIssue[] =>
+    work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)
 
   /** 日期一律照當下語言排。快照裡存的是 ISO 字串，格式化是畫面的事。 */
   const dateTime = (iso: string): string =>
@@ -169,14 +185,14 @@ export function viewOf(snapshot: Partial<Snapshot>) {
   /** 導言只講數得出來的事實。沒有可動的票、或整批都關完了，句子跟著換。 */
   const lede = (): string => {
     if (!openCount) return t('lede.allDone')
-    const frontline = work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)
+    const ready = frontline()
     const parts = [t('lede.open', { n: openCount })]
-    if (frontline.length) {
-      const first = frontline
+    if (ready.length) {
+      const first = ready
         .slice(0, 3)
-        .map((i) => `<a href="${esc(i.url)}" target="_blank" rel="noopener">#${i.number}</a>`)
+        .map((i) => link(i.number))
         .join(t('join.items'))
-      parts.push(t('lede.ready', { n: frontline.length, issues: first }))
+      parts.push(t('lede.ready', { n: ready.length, issues: first }))
     } else {
       parts.push(t('lede.none'))
     }
@@ -209,7 +225,7 @@ export function viewOf(snapshot: Partial<Snapshot>) {
 
   const footerHTML = (): { truth: string; refresh: string; config: string } => {
     const code = (command: string) => `<code>${esc(command)}</code>`
-    const vocab = snapshot.labels ?? { ready: [], unready: [] }
+    const vocab = snapshot.labels
     return {
       truth: esc(t('foot.truth')),
       refresh: t('foot.refresh', {
@@ -346,14 +362,15 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     })
     if (layout.islandRows) {
       labels.push(
-        `<div class="tlabel" style="top:${MAP.top + layout.islandFrom * MAP.row}px">` +
+        `<div class="tlabel" style="top:${MAP.top + layout.tracks.length * MAP.row}px">` +
           `<b>${esc(t('map.islandName'))}</b><span>${esc(t('map.islandSub'))}</span></div>`,
       )
     }
     return labels.join('')
   }
 
-  const mapHTML = (shown: Shown): string => {
+  /** `parent` 不是 null 時，圖本體跟著那張主票收合——收合的對象由呼叫端指定。 */
+  const mapHTML = (shown: Shown, parent: number | null): string => {
     const layout = layoutOf(shown.members)
     const seenTo = new Map<number, number>()
     const rails = layout.edges
@@ -370,7 +387,7 @@ export function viewOf(snapshot: Partial<Snapshot>) {
       })
       .join('')
     return (
-      `<div class="map-wrap" style="--track:${shown.track}">` +
+      `<div class="map-wrap"${foldTarget(parent)} style="--track:${shown.track}">` +
       trackLabelsHTML(layout) +
       `<svg width="${layout.width}" height="${layout.height}"` +
       ` viewBox="0 0 ${layout.width} ${layout.height}" role="img">` +
@@ -380,23 +397,20 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     )
   }
 
-  /** 每張圖底下重複一份 key。圖可以收起來，key 跟著收，不會留一段沒有圖的說明。 */
-  const mapKeyHTML = (): string => {
-    const shapes: readonly [string, string][] = [
-      ['k-ready', t('legend.ready')],
-      ['k-active', t('legend.active')],
-      ['k-blocked', t('legend.blocked')],
-      ['k-triage', t('legend.triage')],
-      ['k-done', t('legend.done')],
-    ]
-    return (
-      '<div class="map-key">' +
-      shapes.map(([mark, label]) => `<span><i class="${mark}"></i>${esc(label)}</span>`).join('') +
-      `<span>${esc(t('legend.solid'))}</span>` +
-      `<span>${esc(t('legend.dashed'))}</span>` +
-      '</div>'
-    )
-  }
+  /**
+   * 每張圖底下重複一份 key。圖可以收起來，key 跟著收，不會留一段沒有圖的說明。
+   *
+   * 五個項目照 `STATUS_ORDER` 長出來，順序與狀態本身同一份；class 是 `k-<狀態>`，文案鍵是
+   * `legend.<狀態>`，所以新增一個狀態不必回來改這裡。
+   */
+  const mapKeyHTML = (): string =>
+    '<div class="map-key">' +
+    STATUS_ORDER.map(
+      (status) => `<span><i class="k-${status}"></i>${esc(t(`legend.${status}`))}</span>`,
+    ).join('') +
+    `<span>${esc(t('legend.solid'))}</span>` +
+    `<span>${esc(t('legend.dashed'))}</span>` +
+    '</div>'
 
   /** 一群票的標題。主票那一群用主票標題（真資料），其他三種是頁面自己的分類。 */
   const groupTitle = (group: Group): string => {
@@ -430,18 +444,19 @@ export function viewOf(snapshot: Partial<Snapshot>) {
   const foldButtonHTML = (parent: number): string =>
     `<button type="button" class="fold" data-fold-for="${parent}" aria-expanded="true"></button>`
 
+  /** 掛了這個屬性的東西會跟著那張主票一起收起來。沒有主票的群收不了，就不掛。 */
+  const foldTarget = (parent: number | null): string =>
+    parent === null ? '' : ` data-parent="${parent}"`
+
   const shownGroups = (): Shown[] =>
-    (snapshot.groups ?? []).map((group, index) => ({
+    snapshot.groups.map((group, index) => ({
       group,
       members: group.members.map(issueAt).filter((issue): issue is MapIssue => issue !== undefined),
       track: `var(${TRACK_COLOURS[index % TRACK_COLOURS.length]})`,
     }))
 
   /** 這一組裡有沒有票互相擋著。沒有的話畫出來只是一片點陣，不是線路圖。 */
-  const hasRails = (shown: Shown): boolean => {
-    const inGroup = new Set(shown.members.map((m) => m.number))
-    return shown.members.some((m) => m.blockedBy.some((n) => inGroup.has(n)))
-  }
+  const hasRails = (shown: Shown): boolean => edgesWithin(shown.members).length > 0
 
   const groupsHTML = (): string => {
     const groups = shownGroups()
@@ -456,11 +471,9 @@ export function viewOf(snapshot: Partial<Snapshot>) {
         const parent = shown.group.parent
         const fold = parent === null ? '' : foldButtonHTML(parent)
         const attrs = parent === null ? '' : ` data-fold="${parent}"`
-        const bodyAttrs = parent === null ? '' : ` data-parent="${parent}"`
         const body = drawn.has(shown)
-          ? mapHTML(shown).replace('class="map-wrap"', `class="map-wrap"${bodyAttrs}`) +
-            mapKeyHTML()
-          : `<p class="undrawn"${bodyAttrs}>${esc(t('group.undrawn'))}</p>`
+          ? mapHTML(shown, parent) + mapKeyHTML()
+          : `<p class="undrawn"${foldTarget(parent)}>${esc(t('group.undrawn'))}</p>`
         return (
           `<section class="group" style="--track:${shown.track}"${attrs}>` +
           `<div class="group-head">${fold}<h2>${esc(groupTitle(shown.group))}</h2>` +
@@ -513,10 +526,7 @@ export function viewOf(snapshot: Partial<Snapshot>) {
   }
 
   /** 沒有選取時預設看哪一張：第一張可接手的，再不然就第一張。 */
-  const defaultPick = (): number | undefined => {
-    const first = work.filter((i) => i.status === 'ready').sort(byStatusThenNumber)[0]
-    return (first ?? issues[0])?.number
-  }
+  const defaultPick = (): number | undefined => (frontline()[0] ?? issues[0])?.number
 
   const detailPanelHTML = (number: number | undefined): { status: string; html: string } => {
     const issue = number === undefined ? undefined : issueAt(number)
@@ -646,5 +656,3 @@ export function viewOf(snapshot: Partial<Snapshot>) {
     tabsHTML,
   }
 }
-
-export type View = ReturnType<typeof viewOf>

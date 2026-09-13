@@ -15,7 +15,7 @@
 
 import { spawnSync } from 'bun'
 
-import { LOCALE_NAME, LOCALES, t } from './issue-map-i18n.ts'
+import { t } from './issue-map-i18n.ts'
 import {
   criticalPathOf,
   groupsOf,
@@ -24,7 +24,7 @@ import {
   type Snapshot,
   type Status,
 } from './issue-map-model.ts'
-import { esc, viewOf } from './issue-map-view.ts'
+import { esc, langOptionsHTML, viewOf } from './issue-map-view.ts'
 
 const TEMPLATE = new URL('./issue-map.html', import.meta.url).pathname
 const CLIENT = new URL('./issue-map-page.ts', import.meta.url).pathname
@@ -484,7 +484,7 @@ function prerender(html: string, snapshot: Snapshot): string {
     ['foot-truth', foot.truth],
     ['foot-refresh', foot.refresh],
     ['foot-config', foot.config],
-    ['lang', LOCALES.map((l) => `<option value="${l}">${esc(LOCALE_NAME[l])}</option>`).join('')],
+    ['lang', langOptionsHTML()],
   ]
   const withBody = filled.reduce((acc, [id, body]) => fillById(acc, id, body), html)
   return replaceIn(withBody, /(<title>)[\s\S]*?(<\/title>)/, esc(title), 'title')

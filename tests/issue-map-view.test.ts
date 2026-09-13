@@ -31,7 +31,7 @@ function issue(number: number, extra: Partial<MapIssue> = {}): MapIssue {
   }
 }
 
-function snapshotOf(issues: MapIssue[], groups: Snapshot['groups'] = []): Partial<Snapshot> {
+function snapshotOf(issues: MapIssue[], groups: Snapshot['groups'] = []): Snapshot {
   return {
     generatedAt: '2026-01-01T00:00:00.000Z',
     repo: 'owner/repo',
