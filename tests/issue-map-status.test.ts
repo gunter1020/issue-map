@@ -93,6 +93,22 @@ describe('主票看的是子票', () => {
   })
 
   /**
+   * 守的是「主票自己被擋著時，下一步講的是那個阻擋者，不是『可以關掉了』」。
+   *
+   * 壞了會怎樣：狀態寫 blocked、下一步寫「子票全關，可以關掉了」，同一張票上兩句話互相矛盾，
+   * 照著下一步做的人會去關一張其實還在等前置的主票。
+   */
+  test('子票全關但自己還被擋著，下一步是等那張票', () => {
+    const verdict = verdictOf(
+      issue({ number: 7, blockedBy: [2] }),
+      repo({ parents: new Set([7]), open: new Set([2]) }),
+    )
+
+    expect(verdict.status).toBe('blocked')
+    expect(verdict.nextStep).toEqual({ kind: 'waitIssues', issues: [2] })
+  })
+
+  /**
    * 守的是「主票不吃 triage 與 active 那兩條規則」。
    *
    * 壞了會怎樣：沒掛角色標籤的主票會被畫成待 triage，而主票本來就不是拿去做的東西。

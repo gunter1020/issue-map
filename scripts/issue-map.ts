@@ -393,10 +393,10 @@ export function verdictOf(issue: IssueFacts, repo: RepoFacts): Verdict {
         who: issue.assignees.length ? issue.assignees : label ? [label] : [],
       }
     }
-    if (isParent) {
-      return openChildren ? { kind: 'waitChildren', count: openChildren } : { kind: 'parentReady' }
-    }
+    // 主票先講子票；子票全關卻還是 blocked，就是它自己被別的票擋著，那時要講那張票。
+    if (isParent && openChildren) return { kind: 'waitChildren', count: openChildren }
     if (status === 'blocked') return { kind: 'waitIssues', issues: waitingFor }
+    if (isParent) return { kind: 'parentReady' }
     return has(rules.human)
       ? { kind: 'manual' }
       : { kind: 'command', command: rules.implementCommand }
