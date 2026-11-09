@@ -33,6 +33,8 @@ skill、讓 agent 照著跑——預設的標籤與指令也是從那裡來的�
 
 - repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
 - `ISSUE_MAP_PORT` 固定 port。固定就是嚴格的：被佔住時直接失敗，不會偷偷換一個。
+- server 只聽 `127.0.0.1`——它拿你的 `gh` 登入讀 repo，別台機器連不進來。透過 SSH 看就轉發 port
+  （`ssh -L`）。
 - 加 `--open` 才會自動開瀏覽器分頁；不加就只印網址。
 - 靜態檔會過期，要看現在的狀態就用 server。
 - 在跑不了 script 的地方（嚴格 CSP、某些預覽窗），檔案會退回一份純文字的票清單，而不是一片空白。
@@ -109,17 +111,18 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 
 ## 檔案
 
-| 檔案                     | 責任                                                     |
-| ------------------------ | -------------------------------------------------------- |
-| `src/issue-map.ts`       | 抓快照、算狀態與下一步、產出 HTML。設定在裡面的 `CONFIG` |
-| `src/issue-map-model.ts` | 純資料模型：分組、關鍵路徑、排版。前後端共用             |
-| `src/issue-map-i18n.ts`  | 四種語言的文案與查表                                     |
-| `src/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                      |
-| `src/issue-map.html`     | 樣板。兩個佔位區塊會被填入                               |
-| `src/issue-map-serve.ts` | 本機 server，每個請求重抓一次                            |
-| `src/issue-map-open.ts`  | 把網址交給預設瀏覽器（CLI 的 `--open`、app 裡的連結）    |
-| `app/`                   | 桌面 app：視窗、server worker、選 repo、macOS 建置       |
-| `tools/mutate.ts`        | 突變測試：改壞一行看測試會不會紅                         |
+| 檔案                        | 責任                                                     |
+| --------------------------- | -------------------------------------------------------- |
+| `src/issue-map.ts`          | 抓快照、算狀態與下一步、產出 HTML。設定在裡面的 `CONFIG` |
+| `src/issue-map-model.ts`    | 純資料模型：分組、關鍵路徑、排版。前後端共用             |
+| `src/issue-map-i18n.ts`     | 四種語言的文案與查表                                     |
+| `src/issue-map-page.ts`     | 瀏覽器端程式碼，建置時被打包進 HTML                      |
+| `src/issue-map.html`        | 樣板。兩個佔位區塊會被填入                               |
+| `src/issue-map-serve.ts`    | 本機 server，每個請求重抓一次                            |
+| `src/issue-map-open.ts`     | 把網址交給預設瀏覽器（CLI 的 `--open`、app 裡的連結）    |
+| `src/issue-map-loopback.ts` | 兩個 server 共用的網路邊界：只聽本機、只認自己的 Host    |
+| `app/`                      | 桌面 app：視窗、server worker、選 repo、macOS 建置       |
+| `tools/mutate.ts`           | 突變測試：改壞一行看測試會不會紅                         |
 
 ## 在這個 repo 裡開發
 
