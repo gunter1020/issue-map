@@ -400,6 +400,7 @@ function render(): void {
   pick('foot-config').innerHTML = foot.config
 
   groupsEl.innerHTML = view.groupsHTML()
+  pick('branches').innerHTML = view.branchesHTML()
   tabsEl.setAttribute('aria-label', t('tabs.aria'))
   renderRows()
   // paintSelection 收尾會畫詳細，沒有選取時它自己退回預設那一張。

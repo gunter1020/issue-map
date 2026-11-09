@@ -32,6 +32,10 @@ as a skill, let the agent run it — which is where the default labels and comma
 | `bunx -p issue-map@latest issue-map-build out.html` | Static file at a path you name       |
 
 - The repo comes from `gh` reading the git remote in your cwd — nothing to fill in.
+- Run it inside a clone and the map also draws your **local branches** against the default branch:
+  how far each is ahead and behind, and the issue its name mentions (`feature/12-…` → #12, only if
+  #12 is on the map). It is skipped when none of the clone's remotes is the repo being mapped, e.g.
+  with `GH_REPO` pointing elsewhere. Branch names end up in the static file too.
 - `ISSUE_MAP_PORT` pins the port. Pinned is strict: it fails rather than moving if taken.
 - The server listens on `127.0.0.1` only, since it reads repos with your `gh` login; other machines
   cannot reach it. Over SSH, forward the port (`ssh -L`).
@@ -55,6 +59,10 @@ bun run app         # or run it from source without building
 - Same map, same `gh` login. The repo reaches `gh` as `GH_REPO`; the `ISSUE_MAP_*` variables only
   apply when you start it from a terminal, a Finder launch uses the defaults.
 - GitHub links open in your default browser. ⌘R re-fetches, ⌘C copies.
+- Give the optional local clone folder — typed, or picked with **Choose…** — to see its branches
+  too. Leave the repo empty and it is taken from the clone's remote (`origin` first). The folder
+  is checked (a git working directory with a remote pointing at the repo) and remembered in
+  `~/.config/issue-map/clones.json`; leave the field empty next time to keep it.
 - Recent repos live in `~/.config/issue-map/recent.json`. The server listens on `127.0.0.1:47474`
   so the language choice survives restarts; if that port is taken it moves, and the choice is not
   kept for that run.
@@ -129,6 +137,7 @@ tree.
 | `src/issue-map.html`        | The template. Two placeholder blocks get filled in                       |
 | `src/issue-map-serve.ts`    | Local server, re-fetches on every request                                |
 | `src/issue-map-open.ts`     | Hands a URL to the default browser (CLI `--open`, links in the app)      |
+| `src/issue-map-git.ts`      | Local clone: GitHub repo names, branches ahead/behind the default branch |
 | `src/issue-map-loopback.ts` | Network boundary shared by both servers: loopback only, own Host only    |
 | `app/`                      | Desktop app: window, server worker, repo picker, macOS build             |
 | `tools/mutate.ts`           | Mutation testing: break one line, see whether a test goes red            |

@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util'
 import { Worker } from 'node:worker_threads'
 
 import { openInBrowser } from '../src/issue-map-open.ts'
+import { OPEN_EXTERNAL, PICK_FOLDER } from './bridge.ts'
 import { PREFERRED_PORT, type ServerOptions } from './server.ts'
 
 const USAGE = `issue-map app
@@ -23,9 +24,6 @@ const USAGE = `issue-map app
   --port <n>          Server port (default ${PREFERRED_PORT}; falls back to a random one if taken)
   --headless          Start the server and print its URL; no window
   --debug             Enable the WebView developer tools`
-
-/** 頁面上呼叫的全域函式名；主執行緒那一側在 `bind` 時掛上。 */
-const OPEN_EXTERNAL = '__issueMapOpenExternal'
 
 /**
  * 地圖上的 GitHub 連結是 `target="_blank"`，WebView 沒有分頁可開，點了不會有任何反應；就算換成
@@ -133,7 +131,9 @@ async function main(): Promise<void> {
     const webview = new Webview(values.debug, { width: 1280, height: 860, hint: 0 })
     if (process.platform === 'darwin') {
       const { installMacMenu } = await import('./macos-menu.ts')
+      const { pickFolder } = await import('./macos-folder.ts')
       installMacMenu()
+      webview.bind(PICK_FOLDER, () => pickFolder('Choose the local clone of this repo'))
     }
     webview.title = 'issue-map'
     webview.bind(OPEN_EXTERNAL, (url) => {

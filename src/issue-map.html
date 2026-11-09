@@ -567,6 +567,109 @@
   }
 
   /* 沒有畫圖的那幾組。 */
+  /* ---------- 本機分支 ---------- */
+
+  /* 沒有本機 clone 時整塊是空的，別讓 .page 的 gap 留下一段空白。 */
+  #branches:empty {
+    display: none;
+  }
+  section.branches {
+    gap: 14px;
+  }
+  .branch-map {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: max-content;
+  }
+  .branch-rails {
+    flex: none;
+    overflow: visible;
+  }
+  .bbase {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+  .btip {
+    fill: var(--ink);
+  }
+  .bfork {
+    fill: var(--card);
+    stroke: var(--ink);
+    stroke-width: 2;
+  }
+  /*
+   * 分支線不用線色盤也不用狀態色：那些顏色在這一頁上都已經代表票的狀態。一律中性的 --muted，
+   * 目前所在的那條改成 --ink 加粗；commit 是實心點，不跟「等前置」的空心圓撞形狀。
+   */
+  .brail path {
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .bstation {
+    fill: var(--muted);
+  }
+  .brail[data-current='true'] path {
+    stroke: var(--ink);
+    stroke-width: 3.5;
+  }
+  .brail[data-current='true'] .bstation {
+    fill: var(--ink);
+  }
+  /* 沒有自己的 commit：跟走完的軌道一樣轉虛線。旁邊的文字照樣說清楚，不只靠虛線。 */
+  .brail[data-merged='true'] path {
+    stroke: var(--line-strong);
+    stroke-dasharray: 5 4;
+    stroke-width: 2;
+  }
+  .branch-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  /* 列高必須等於 SVG 的列距（`--brow`），名字才會對在自己那條線上。 */
+  .brow {
+    height: var(--brow);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+  .bname,
+  .bbase-row code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .bbase-row code,
+  .brow[data-current='true'] .bname {
+    font-weight: 600;
+  }
+  /* 中性的標籤：紫色是「有人接手」，借來標目前分支會被讀成那個狀態。 */
+  .bcurrent {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+  .brow a {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .bmeta {
+    color: var(--muted);
+  }
+
   .undrawn {
     margin: 0;
     padding: 14px 12px;
@@ -914,6 +1017,8 @@
   <div class="detail" id="detail"></div>
 
   <div id="groups"></div>
+
+  <div id="branches"></div>
 
   <section class="group">
     <div class="list-head">

@@ -46,7 +46,7 @@ const OPEN = args.includes('--open')
 let inFlight: Promise<string> | null = null
 
 async function page(): Promise<string> {
-  const snapshot = await takeSnapshot()
+  const snapshot = await takeSnapshot({ gitDir: process.cwd() })
   console.log(describe(snapshot))
   return renderDocument(snapshot)
 }

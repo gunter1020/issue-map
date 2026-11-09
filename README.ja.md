@@ -34,6 +34,10 @@ Agent は 1 ラウンドに 1 枚しか扱えないので、毎ラウンド実�
 | `bunx -p issue-map@latest issue-map-build out.html` | 静的ファイルを指定したパスへ             |
 
 - repo は `gh` が cwd の git から推測するので、指定は不要です。
+- clone の中で実行すると、地図に**ローカルブランチ**も描きます。各ブランチが既定ブランチより何コミット
+  先行・遅れているか、ブランチ名が指すチケット（`feature/12-…` → #12、#12 が地図にある場合のみ）。
+  clone のどの remote も描いている repo でなければ描きません（`GH_REPO` で別の repo を指したときなど）。
+  ブランチ名は静的ファイルにも入ります。
 - `ISSUE_MAP_PORT` で port を固定できます。固定は厳密で、埋まっていれば黙って移らず失敗します。
 - server は `127.0.0.1` でだけ待ち受けます。あなたの `gh` ログインで repo を読むので、他のマシンから
   は接続できません。SSH 越しに見るなら port を転送してください（`ssh -L`）。
@@ -57,6 +61,10 @@ bun run app         # ビルドせずソースから起動することもでき�
 - 地図も `gh` のログインも同じです。repo は `GH_REPO` として `gh` に渡ります。`ISSUE_MAP_*` が効く
   のはターミナルから起動したときだけで、Finder から開くと既定値になります。
 - GitHub のリンクは既定のブラウザで開きます。⌘R で取り直し、⌘C でコピー。
+- 任意でローカル clone のフォルダを入れる（手入力か **Choose…** で選ぶ）と、そのブランチも見られます。
+  repo を空欄にすると clone の remote から推測します（`origin` 優先）。フォルダは先に検証し（git の作業
+  ディレクトリで、この repo を指す remote がある）、`~/.config/issue-map/clones.json` に記録します。次回は
+  空欄のままで引き継がれます。
 - 最近開いた repo は `~/.config/issue-map/recent.json` に残ります。server は `127.0.0.1:47474` で
   待ち受けるので、言語の選択が再起動後も残ります。その port が使用中なら別の port に移り、その回の
   選択は残りません。
@@ -129,6 +137,7 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 | `src/issue-map.html`        | テンプレート。2 つのプレースホルダが埋められる                           |
 | `src/issue-map-serve.ts`    | ローカル server。リクエストごとに取り直す                                |
 | `src/issue-map-open.ts`     | URL を既定のブラウザに渡す（CLI の `--open`、app 内のリンク）            |
+| `src/issue-map-git.ts`      | ローカル clone：GitHub の repo 名の解釈、既定ブランチに対する先行・遅れ  |
 | `src/issue-map-loopback.ts` | 両方の server が共有するネットワーク境界：ローカルのみ、自分の Host のみ |
 | `app/`                      | デスクトップ app：ウィンドウ、server worker、repo 選択、macOS ビルド     |
 | `tools/mutate.ts`           | ミューテーションテスト：1 行を壊してテストが赤くなるか見る               |

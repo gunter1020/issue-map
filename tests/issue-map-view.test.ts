@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { DEFAULT_LOCALE, setLocale } from '../src/issue-map-i18n.ts'
-import type { MapIssue, Snapshot, Status } from '../src/issue-map-model.ts'
+import type { LocalBranch, MapIssue, Snapshot, Status } from '../src/issue-map-model.ts'
 import { viewOf } from '../src/issue-map-view.ts'
 
 /**
@@ -31,7 +31,11 @@ function issue(number: number, extra: Partial<MapIssue> = {}): MapIssue {
   }
 }
 
-function snapshotOf(issues: MapIssue[], groups: Snapshot['groups'] = []): Snapshot {
+function snapshotOf(
+  issues: MapIssue[],
+  groups: Snapshot['groups'] = [],
+  branches: Snapshot['branches'] = null,
+): Snapshot {
   return {
     generatedAt: '2026-01-01T00:00:00.000Z',
     repo: 'owner/repo',
@@ -39,6 +43,7 @@ function snapshotOf(issues: MapIssue[], groups: Snapshot['groups'] = []): Snapsh
     groups,
     criticalPath: 1,
     issues,
+    branches,
   }
 }
 
@@ -717,5 +722,77 @@ describe('圖的張數上限', () => {
     expect(last).toContain('class="map-wrap"')
     expect(last).not.toContain('class="undrawn"')
     expect(last).toContain('class="edge"')
+  })
+})
+
+describe('本機分支', () => {
+  function branch(name: string, extra: Partial<LocalBranch> = {}): LocalBranch {
+    return {
+      name,
+      head: 'abc1234',
+      committedAt: '2026-01-02T00:00:00.000Z',
+      ahead: 1,
+      behind: 0,
+      current: false,
+      issue: null,
+      ...extra,
+    }
+  }
+
+  function branchesOf(branches: LocalBranch[], hidden = 0): string {
+    return viewOf(
+      snapshotOf([issue(12, { status: 'active' })], [], { base: 'main', branches, hidden }),
+    ).branchesHTML()
+  }
+
+  /** 沒有本機 clone（或 remote 對不上）時不能畫出一塊空殼，樣板靠空字串把整塊藏起來。 */
+  test('沒有分支資料就整塊不畫', () => {
+    expect(viewOf(snapshotOf([])).branchesHTML()).toBe('')
+  })
+
+  /** 分支名是使用者自己取的字，進 innerHTML 前一定要逃脫。 */
+  test('分支名逃脫，票號連到票並帶狀態', () => {
+    const html = branchesOf([branch('fix/<b>', { issue: 12 })])
+    expect(html).toContain('fix/&lt;b&gt;')
+    expect(html).not.toContain('<b>')
+    expect(html).toContain('href="https://example.test/12"')
+    expect(html).toContain('data-status="active"')
+  })
+
+  /** 「領先 0」讀起來像沒做事；要說的是它的 commit 全都已經在基準分支裡。 */
+  test('沒有自己的 commit 就說全在基準分支裡', () => {
+    const html = branchesOf([branch('old', { ahead: 0, behind: 3 })])
+    expect(html).toContain('all in main')
+    expect(html).not.toContain('0 ahead')
+    expect(html).toContain('3 behind')
+  })
+
+  /** 名字與軌道是兩塊分開排的，靠列數對齊；少一列名字就會對到別條線上。 */
+  test('主線一列加每條分支一列，軌道數等於分支數', () => {
+    const html = branchesOf([
+      branch('a', { behind: 5 }),
+      branch('b', { behind: 0 }),
+      branch('c', { behind: 2 }),
+    ])
+    expect(html.match(/<li class="brow/g)?.length).toBe(4)
+    expect(html.match(/<g class="brail"/g)?.length).toBe(3)
+    // 分岔點由右到左：落後最少的排最上面，往下拐的線才不會穿過上面的橫線。
+    const order = [...html.matchAll(/<code class="bname"[^>]*>([^<]+)</g)].map((m) => m[1])
+    expect(order).toEqual(['b', 'c', 'a'])
+  })
+
+  /**
+   * 線色盤裡的綠與「可接手」的綠對比只有 1.01:1——分支線帶上它，旁邊又是綠色的狀態 pill，就會被
+   * 讀成那條分支「可接手」。顏色留給票的狀態，分支線只分「目前所在」與其他。
+   */
+  test('分支線不帶線色，目前所在的那一條標在線上', () => {
+    const html = branchesOf([branch('a', { current: true }), branch('b', { behind: 1 })])
+    expect(html).not.toContain('--track')
+    expect(html).not.toContain('var(--t')
+    expect(html.match(/<g class="brail"[^>]*data-current="true"/g)?.length).toBe(1)
+  })
+
+  test('超過上限沒列的分支報數量', () => {
+    expect(branchesOf([branch('a')], 3)).toContain('3 older branches not shown')
   })
 })

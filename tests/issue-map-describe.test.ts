@@ -36,6 +36,7 @@ function snapshot(statuses: readonly Status[], generatedAt = AT): Snapshot {
     groups: [],
     criticalPath: 0,
     issues: statuses.map((status, index) => issue(index + 1, status)),
+    branches: null,
   }
 }
 
