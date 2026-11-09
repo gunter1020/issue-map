@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.0](https://github.com/gunter1020/issue-map/compare/v0.6.0...v0.7.0) (2026-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **serve:** 從別台機器或容器外直接連 server 不再可行；遠端看圖改用 `ssh -L` 轉發 port。
+
+### Features
+
+* **app:** 新增 macOS 桌面 app，在視窗裡選 repo 畫開發地圖 ([04edcd6](https://github.com/gunter1020/issue-map/commit/04edcd69acdecce59b2a5f13ee4f4f881e7ccee7))
+* **app:** 本機 clone 可用原生對話框選，repo 留空就從 clone 的 remote 帶出 ([c3b0248](https://github.com/gunter1020/issue-map/commit/c3b024839606d636ee13854b5f928c1d727fc991))
+* **map:** 分支圖改成由上而下的直線，時間方向與 git log --graph 一致 ([6243c28](https://github.com/gunter1020/issue-map/commit/6243c288a670a776696668ff91a07e67c4ad9227))
+* **map:** 地圖加上本機分支線路圖，CLI 讀 cwd、app 可指定本機 clone ([dcc261f](https://github.com/gunter1020/issue-map/commit/dcc261f93298859486fab767fafdae134aad7254))
+
+
+### Bug Fixes
+
+* **fetch:** repo 查不到時明說找不到，不再噴 null 錯誤 ([1547a12](https://github.com/gunter1020/issue-map/commit/1547a12c41ccc309498eff7e4a218475dbe175db))
+* **map:** 分支圖改用中性線色與實心 commit 點，不再借用票的狀態色 ([a3974ae](https://github.com/gunter1020/issue-map/commit/a3974ae7e5f790a40c3e23dbd4e40edd31a76448))
+* **map:** 已完成的票站名與圖示提高對比，符合 WCAG ([f3fe4c9](https://github.com/gunter1020/issue-map/commit/f3fe4c964b716c358fc611b73a867d115a1659bb))
+* **serve:** 本機 server 只聽 127.0.0.1 並擋掉別人的 Host ([171aca0](https://github.com/gunter1020/issue-map/commit/171aca058827ae0fb600004ff76d901ec198c1ca))
+
 ## [0.6.0](https://github.com/gunter1020/issue-map/compare/v0.5.0...v0.6.0) (2026-09-13)
 
 
