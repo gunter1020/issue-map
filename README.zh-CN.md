@@ -57,8 +57,9 @@ bun run app         # 或不构建，直接从源码运行
 - 同一张图、同一个 `gh` 登录。repo 以 `GH_REPO` 交给 `gh`；`ISSUE_MAP_*` 只有从终端启动时才读得
   到，从 Finder 打开用的是默认值。
 - GitHub 链接交给默认浏览器打开。⌘R 重抓，⌘C 复制。
-- 选填本地 clone 的目录，就能一起看它的分支。会先验证（是 git 工作目录，而且有 remote 指向这个
-  repo）才记进 `~/.config/issue-map/clones.json`；下次留空就沿用。
+- 选填本地 clone 的目录（手动输入或按 **Choose…** 选择），就能一起看它的分支。repo 留空时从 clone
+  的 remote 推断（`origin` 优先）。目录会先验证（是 git 工作目录，而且有 remote 指向这个 repo）才记进
+  `~/.config/issue-map/clones.json`；下次留空就沿用。
 - 最近打开过的 repo 记在 `~/.config/issue-map/recent.json`。server 监听 `127.0.0.1:47474`，语言
   选择才能跨重启保留；那个端口被占就换一个，那一次的选择记不住。
 - 这是开发构建——ad-hoc 签名、没有公证——给构建它的那台 Mac 用，不在 npm 包里。

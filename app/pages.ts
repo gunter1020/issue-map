@@ -7,6 +7,7 @@
 
 import { documentOf } from '../src/issue-map.ts'
 import { esc } from '../src/issue-map-view.ts'
+import { PICK_FOLDER } from './bridge.ts'
 
 /** 地圖頁的網址。owner 與 name 都已經過 `parseRepo`，不會有需要編碼的字。 */
 export function mapPath(repo: string): string {
@@ -58,6 +59,8 @@ const PICKER_STYLE = `<style>
     border: 0; border-radius: 8px; cursor: pointer;
   }
   button:disabled { opacity: 0.6; cursor: default; }
+  button.secondary { color: var(--ink); background: var(--card); border: 1px solid var(--line); font-weight: 500; }
+  button[hidden] { display: none; }
   .error { color: var(--error); margin: 12px 0 0; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 40px 0 8px; }
   ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
@@ -91,17 +94,43 @@ export function pickerPage(recent: readonly RecentEntry[], error?: PickerInput):
   <h1>issue-map</h1>
   <p>Draw a repo's issue dependencies. Uses your <code>gh</code> login; every open re-fetches from GitHub.</p>
   <form action="/open" method="get">
-    <input name="repo" value="${esc(error?.input ?? '')}" placeholder="owner/name or a GitHub URL"
-      aria-label="Repository" autofocus autocomplete="off" autocapitalize="off" spellcheck="false" required>
+    <input name="repo" id="repo" value="${esc(error?.input ?? '')}" placeholder="owner/name or a GitHub URL"
+      aria-label="Repository" autofocus autocomplete="off" autocapitalize="off" spellcheck="false">
     <button data-loading="Fetching…">Open map</button>
-    <input name="path" value="${esc(error?.path ?? '')}" placeholder="Local clone folder (optional), e.g. ~/code/repo"
+    <input name="path" id="path" value="${esc(error?.path ?? '')}" placeholder="Local clone folder (optional), e.g. ~/code/repo"
       aria-label="Local clone folder" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <p class="hint">With a local clone the map also shows its branches. Leave it empty to keep the folder you set before.</p>
+    <button type="button" class="secondary" id="pick-folder" hidden>Choose…</button>
+    <p class="hint">With a local clone the map also shows its branches, and an empty repo is taken from the clone's remote. Leave the folder empty to keep the one you set before.</p>
   </form>
   ${problem}
   ${list}
-</main>${LOADING_SCRIPT}`)
+</main>${LOADING_SCRIPT}${PICK_FOLDER_SCRIPT}`)
 }
+
+/**
+ * 「Choose…」按鈕只在視窗掛了原生選資料夾的函式時出現：headless 或拿一般瀏覽器開時沒有它，
+ * 顯示出來只會是一個按了沒反應的按鈕。
+ *
+ * 選完資料夾、repo 欄還空著，就問 server 這份 clone 是哪個 repo 填上去，送出前就看得到要畫哪個。
+ * 已經填了的不蓋掉；問不出來就留空，送出時 server 會說原因。
+ */
+const PICK_FOLDER_SCRIPT = `<script>
+(() => {
+  const pick = window[${JSON.stringify(PICK_FOLDER)}]
+  const button = document.getElementById('pick-folder')
+  if (typeof pick !== 'function' || !button) return
+  button.hidden = false
+  button.addEventListener('click', async () => {
+    const path = await pick()
+    if (!path) return
+    document.getElementById('path').value = path
+    const repoField = document.getElementById('repo')
+    if (repoField.value.trim()) return
+    const found = await fetch('/clone-repo?path=' + encodeURIComponent(path)).then((r) => r.json())
+    if (found.repo) repoField.value = found.repo
+  })
+})()
+</script>`
 
 const BAR_STYLE = `<style>
   .app-bar {

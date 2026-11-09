@@ -43,6 +43,24 @@ export function remoteRepos(remoteVerbose: string): string[] {
 }
 
 /**
+ * 這份 clone 代表哪個 GitHub repo：`origin` 指向 GitHub 就是它；沒有的話，指向 GitHub 的 remote
+ * 只有一個 repo 才算。fork 常見的 `origin`＋`upstream` 取 `origin`——那是自己推的地方，本機分支
+ * 也是對著它開的。認不出來就回 `null`，讓人自己填。
+ */
+export function defaultRepo(remoteVerbose: string): string | null {
+  const byRemote = new Map<string, string>()
+  for (const line of remoteVerbose.split('\n')) {
+    const [name, url] = line.split(/\s+/)
+    const repo = url ? parseRepo(url) : null
+    if (name && repo && !byRemote.has(name)) byRemote.set(name, repo)
+  }
+  const origin = byRemote.get('origin')
+  if (origin) return origin
+  const distinct = new Map([...byRemote.values()].map((repo) => [repo.toLowerCase(), repo]))
+  return distinct.size === 1 ? ([...distinct.values()][0] ?? null) : null
+}
+
+/**
  * 分支名提到哪張票。名字裡被 `/`、`-`、`_`、`#` 隔開的整段數字才算，而且要在 `known` 裡——
  * `release-2026`、`v2` 這種數字不在快照的票號裡，不會被當成票。
  */
@@ -107,9 +125,9 @@ export async function isGitDir(dir: string): Promise<boolean> {
 }
 
 /** `dir` 這份 clone 的 remote 指向哪些 GitHub repo（小寫）；不是 git 目錄就是 `null`。 */
-export async function remotesAt(dir: string): Promise<string[] | null> {
+export async function remotesAt(dir: string): Promise<string | null> {
   if (!(await isGitDir(dir))) return null
-  return remoteRepos(await git(dir, 'remote', '-v'))
+  return git(dir, 'remote', '-v')
 }
 
 /** 欄位分隔：格式字串裡寫 `%00`，git 在輸出裡換成 NUL——分支名不可能含 NUL，參數裡也不能直接放。 */

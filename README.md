@@ -59,8 +59,9 @@ bun run app         # or run it from source without building
 - Same map, same `gh` login. The repo reaches `gh` as `GH_REPO`; the `ISSUE_MAP_*` variables only
   apply when you start it from a terminal, a Finder launch uses the defaults.
 - GitHub links open in your default browser. ⌘R re-fetches, ⌘C copies.
-- Fill in the optional local clone folder to see its branches too. It is checked first (a git
-  working directory with a remote pointing at the repo) and remembered in
+- Give the optional local clone folder — typed, or picked with **Choose…** — to see its branches
+  too. Leave the repo empty and it is taken from the clone's remote (`origin` first). The folder
+  is checked (a git working directory with a remote pointing at the repo) and remembered in
   `~/.config/issue-map/clones.json`; leave the field empty next time to keep it.
 - Recent repos live in `~/.config/issue-map/recent.json`. The server listens on `127.0.0.1:47474`
   so the language choice survives restarts; if that port is taken it moves, and the choice is not

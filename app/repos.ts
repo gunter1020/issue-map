@@ -8,7 +8,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
-import { parseRepo, remotesAt } from '../src/issue-map-git.ts'
+import { defaultRepo, parseRepo, remoteRepos, remotesAt } from '../src/issue-map-git.ts'
 
 /**
  * 資料目錄裡的一個 JSON 檔。兩份記錄都只是捷徑不是資料：檔案壞掉或格式不對就當成空的重來，
@@ -125,23 +125,42 @@ export class LocalClones {
     return (await this.#store.read())[repo.toLowerCase()]
   }
 
-  /**
-   * 驗過才記。回傳的是記下來的絕對路徑；驗不過就丟出給人看的原因。
-   * `~` 開頭的展開成家目錄——從終端機複製來的路徑常常長這樣。
-   */
+  /** 驗過才記。回傳的是記下來的絕對路徑；驗不過就丟出給人看的原因。 */
   async set(repo: string, input: string): Promise<string> {
-    const trimmed = input.trim()
-    const expanded =
-      trimmed === '~' || trimmed.startsWith('~/') ? homedir() + trimmed.slice(1) : trimmed
-    if (!isAbsolute(expanded))
-      throw new Error(`Use a full path for the local clone, e.g. ~/code/${repo.split('/')[1]}`)
-    const dir = resolve(expanded)
-    const remotes = await remotesAt(dir)
-    if (remotes === null) throw new Error(`${dir} is not a git working directory.`)
-    if (!remotes.includes(repo.toLowerCase())) {
+    const { dir, remotes } = await cloneAt(input)
+    if (!remoteRepos(remotes).includes(repo.toLowerCase())) {
       throw new Error(`${dir} has no remote pointing at ${repo}.`)
     }
     await this.#store.update((map) => ({ ...map, [repo.toLowerCase()]: dir }))
     return dir
   }
+}
+
+/**
+ * 這個目錄的 clone 代表哪個 repo，用來在只選了資料夾時把 repo 補上。認不出來就丟出給人看的原因，
+ * 請人自己填。
+ */
+export async function repoOfClone(input: string): Promise<string> {
+  const { dir, remotes } = await cloneAt(input)
+  const repo = defaultRepo(remotes)
+  if (!repo) {
+    throw new Error(`Could not tell which GitHub repo ${dir} is from its remotes; enter the repo.`)
+  }
+  return repo
+}
+
+/**
+ * 把使用者給的路徑解成一份 clone：展開 `~`（從終端機複製來的路徑常常長這樣）、要求絕對路徑、
+ * 確認是 git 工作目錄。回傳目錄與它 `git remote -v` 的原文。
+ */
+async function cloneAt(input: string): Promise<{ dir: string; remotes: string }> {
+  const trimmed = input.trim()
+  const expanded =
+    trimmed === '~' || trimmed.startsWith('~/') ? homedir() + trimmed.slice(1) : trimmed
+  if (!isAbsolute(expanded))
+    throw new Error('Use a full path for the local clone, e.g. ~/code/repo')
+  const dir = resolve(expanded)
+  const remotes = await remotesAt(dir)
+  if (remotes === null) throw new Error(`${dir} is not a git working directory.`)
+  return { dir, remotes }
 }

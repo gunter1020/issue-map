@@ -31,7 +31,10 @@ describe('路由', () => {
     const { url } = await start(fakeMap)
     const response = await fetch(url)
     expect(response.status).toBe(200)
-    expect(await response.text()).toContain('action="/open"')
+    const body = await response.text()
+    expect(body).toContain('action="/open"')
+    // 選資料夾要靠視窗掛的原生函式；伺服器送出的頁面預設不顯示按鈕，沒有那個函式就一直藏著。
+    expect(body).toContain('id="pick-folder" hidden')
   })
 
   /** 表單送來的是網址也好、owner/name 也好，都導到同一個地圖頁。 */
@@ -177,6 +180,38 @@ describe('本機 clone', () => {
 
     const home = await (await fetch(url)).text()
     expect(home).toContain(clone)
+  })
+
+  /** 只選了資料夾：repo 從它的 remote 推，不必再手打一次。 */
+  test('repo 留空、給了 clone，就照 clone 的 remote 開', async () => {
+    const { seen, drawMap } = recording()
+    const { url } = await start(drawMap)
+    const clone = await makeClone('git@github.com:Owner/Repo.git')
+    const response = await open(url, '', clone)
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('/r/Owner/Repo')
+    await fetch(`${url}r/owner/repo`)
+    expect(seen).toEqual([clone])
+  })
+
+  test('repo 與 clone 都沒給就留在首頁說要填什麼', async () => {
+    const { url } = await start(recording().drawMap)
+    const response = await open(url, '', '')
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('Enter a repo, or choose its local clone.')
+  })
+
+  /** 頁面選完資料夾用它填 repo 欄；認不出來時回原因，不回錯誤碼——那不是頁面壞了。 */
+  test('/clone-repo 回這份 clone 的 repo，認不出來就是 null 加原因', async () => {
+    const { url } = await start(recording().drawMap)
+    const ask = async (path: string) =>
+      (await fetch(`${url}clone-repo?path=${encodeURIComponent(path)}`)).json()
+    expect(await ask(await makeClone())).toEqual({ repo: 'owner/repo' })
+    const plain = await mkdtemp(join(tmpdir(), 'issue-map-plain-'))
+    expect(await ask(plain)).toEqual({
+      repo: null,
+      message: `${plain} is not a git working directory.`,
+    })
   })
 
   test('相對路徑不收', async () => {

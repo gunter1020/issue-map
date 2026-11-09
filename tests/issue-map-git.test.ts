@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 import {
   branchMapFor,
+  defaultRepo,
   issueInName,
   type LocalGit,
   readLocalBranches,
@@ -27,6 +28,31 @@ describe('remote 認得哪些 repo', () => {
       'other\thttps://gitlab.com/x/y.git (fetch)',
     ].join('\n')
     expect(remoteRepos(output)).toEqual(['owner/repo', 'up/stream', 'mir/ror'])
+  })
+})
+
+describe('clone 代表哪個 repo', () => {
+  const remotes = (...lines: string[]) => lines.map((line) => `${line} (fetch)`).join('\n')
+
+  /** fork 常見的 origin＋upstream：本機分支是對著自己的 origin 開的，選錯就畫成上游的票。 */
+  test('有指向 GitHub 的 origin 就取 origin', () => {
+    expect(
+      defaultRepo(
+        remotes('upstream\tgit@github.com:up/stream.git', 'origin\thttps://github.com/Me/Fork.git'),
+      ),
+    ).toBe('Me/Fork')
+  })
+
+  test('沒有 origin 時，只有一個 GitHub repo 才算', () => {
+    expect(defaultRepo(remotes('gh\tgit@github.com:a/b.git'))).toBe('a/b')
+    expect(
+      defaultRepo(remotes('a\tgit@github.com:a/b.git', 'c\tgit@github.com:c/d.git')),
+    ).toBeNull()
+  })
+
+  test('沒有指向 GitHub 的 remote 就認不出來', () => {
+    expect(defaultRepo(remotes('origin\thttps://gitlab.com/a/b.git'))).toBeNull()
+    expect(defaultRepo('')).toBeNull()
   })
 })
 

@@ -9,7 +9,7 @@ import { renderFragment, takeSnapshot } from '../src/issue-map.ts'
 import { parseRepo } from '../src/issue-map-git.ts'
 import { isOwnHost, LOOPBACK } from '../src/issue-map-loopback.ts'
 import { errorPage, mapPage, mapPath, pickerPage, type PickerInput } from './pages.ts'
-import { LocalClones, RecentRepos } from './repos.ts'
+import { LocalClones, RecentRepos, repoOfClone } from './repos.ts'
 
 /**
  * 地圖頁要的東西：GitHub 認的 repo 名（大小寫照它的）與地圖片段。`gitDir` 是這個 repo 記下來的
@@ -72,15 +72,31 @@ export function startServer(options: ServerOptions) {
     return html(pickerPage(entries, problem), status)
   }
 
+  /**
+   * 要畫哪個 repo：有填就照填的（認不出來是 `null`）；沒填但給了本機目錄，就從它的 remote 推。
+   * 推不出來丟出給人看的原因。
+   */
+  async function repoFor(input: string, path: string): Promise<string | null> {
+    if (input.trim() || !path.trim()) return parseRepo(input)
+    return repoOfClone(path)
+  }
+
   async function route(url: URL): Promise<Response> {
     if (url.pathname === '/') return picker()
 
     if (url.pathname === '/open') {
       const input = url.searchParams.get('repo') ?? ''
       const path = url.searchParams.get('path') ?? ''
-      const repo = parseRepo(input)
+      let repo: string | null
+      try {
+        repo = await repoFor(input, path)
+      } catch (error) {
+        return picker({ input, path, message: (error as Error).message }, 400)
+      }
       if (!repo) {
-        const message = `"${input.trim()}" is not a repo. Use owner/name, e.g. cli/cli.`
+        const message = input.trim()
+          ? `"${input.trim()}" is not a repo. Use owner/name, e.g. cli/cli.`
+          : 'Enter a repo, or choose its local clone.'
         return picker({ input, path, message }, 400)
       }
       // 本機目錄是選填的；留空就沿用之前記下的那個。
@@ -92,6 +108,15 @@ export function startServer(options: ServerOptions) {
         }
       }
       return new Response(null, { status: 303, headers: { location: mapPath(repo) } })
+    }
+
+    // 選完資料夾，頁面拿它先把 repo 欄填上，送出前就看得到要畫的是哪一個。
+    if (url.pathname === '/clone-repo') {
+      const found = await repoOfClone(url.searchParams.get('path') ?? '').then(
+        (repo) => ({ repo }),
+        (error: unknown) => ({ repo: null, message: (error as Error).message }),
+      )
+      return Response.json(found, { headers: { 'cache-control': 'no-store' } })
     }
 
     const match = /^\/r\/([^/]+\/[^/]+)$/.exec(url.pathname)
