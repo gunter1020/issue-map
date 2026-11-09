@@ -781,6 +781,17 @@ describe('本機分支', () => {
     expect(order).toEqual(['b', 'c', 'a'])
   })
 
+  /**
+   * 線色盤裡的綠與「可接手」的綠對比只有 1.01:1——分支線帶上它，旁邊又是綠色的狀態 pill，就會被
+   * 讀成那條分支「可接手」。顏色留給票的狀態，分支線只分「目前所在」與其他。
+   */
+  test('分支線不帶線色，目前所在的那一條標在線上', () => {
+    const html = branchesOf([branch('a', { current: true }), branch('b', { behind: 1 })])
+    expect(html).not.toContain('--track')
+    expect(html).not.toContain('var(--t')
+    expect(html.match(/<g class="brail"[^>]*data-current="true"/g)?.length).toBe(1)
+  })
+
   test('超過上限沒列的分支報數量', () => {
     expect(branchesOf([branch('a')], 3)).toContain('3 older branches not shown')
   })

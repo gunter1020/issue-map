@@ -600,23 +600,32 @@
     stroke: var(--ink);
     stroke-width: 2;
   }
+  /*
+   * 分支線不用線色盤也不用狀態色：那些顏色在這一頁上都已經代表票的狀態。一律中性的 --muted，
+   * 目前所在的那條改成 --ink 加粗；commit 是實心點，不跟「等前置」的空心圓撞形狀。
+   */
   .brail path {
     fill: none;
-    stroke: var(--track);
-    stroke-width: 3;
+    stroke: var(--muted);
+    stroke-width: 2.5;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  /* 沒有自己的 commit：跟走完的軌道一樣轉虛線。 */
+  .bstation {
+    fill: var(--muted);
+  }
+  .brail[data-current='true'] path {
+    stroke: var(--ink);
+    stroke-width: 3.5;
+  }
+  .brail[data-current='true'] .bstation {
+    fill: var(--ink);
+  }
+  /* 沒有自己的 commit：跟走完的軌道一樣轉虛線。旁邊的文字照樣說清楚，不只靠虛線。 */
   .brail[data-merged='true'] path {
     stroke: var(--line-strong);
     stroke-dasharray: 5 4;
     stroke-width: 2;
-  }
-  .bstation {
-    fill: var(--card);
-    stroke: var(--track);
-    stroke-width: 2.5;
   }
   .branch-rows {
     list-style: none;
@@ -642,11 +651,13 @@
   .brow[data-current='true'] .bname {
     font-weight: 600;
   }
+  /* 中性的標籤：紫色是「有人接手」，借來標目前分支會被讀成那個狀態。 */
   .bcurrent {
     font-family: var(--mono);
     font-size: 10.5px;
-    color: var(--active);
-    border: 1px solid var(--active);
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
     border-radius: 2px;
     padding: 1px 5px;
   }

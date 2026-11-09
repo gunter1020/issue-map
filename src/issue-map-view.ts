@@ -512,6 +512,9 @@ export function viewOf(snapshot: Snapshot) {
    *
    * 橫向位置只照「落後幾個」排序、不照比例：落後 2 與落後 400 照比例畫，前者會擠在主線尾端看不
    * 出來。列的順序是分岔點由右到左，這樣每條往下拐的線都不會穿過上面幾條的橫線。
+   *
+   * 線一律是中性色、commit 是實心小點：同一頁上顏色與空心圓都已經是票的狀態，分支線借用任何一個
+   * 都會被讀成那個狀態。每條線旁邊就是它的名字，不靠顏色分辨是哪一條。
    */
   const branchesHTML = (): string => {
     const map = snapshot.branches
@@ -540,13 +543,12 @@ export function viewOf(snapshot: Snapshot) {
       const y = yOf(index + 1)
       const stations = Math.min(branch.ahead, BRANCH.maxStations)
       const end = x + BRANCH.bend + Math.max(stations, 1) * BRANCH.station
-      const colour = `var(${TRACK_COLOURS[index % TRACK_COLOURS.length]})`
       const dots = Array.from({ length: stations }, (_, k) => {
         const cx = x + BRANCH.bend + (k + 1) * BRANCH.station
-        return `<circle class="bstation" cx="${cx}" cy="${y}" r="4"/>`
+        return `<circle class="bstation" cx="${cx}" cy="${y}" r="3"/>`
       }).join('')
       const svg =
-        `<g class="brail" style="--track:${colour}" data-merged="${branch.ahead === 0}">` +
+        `<g class="brail" data-merged="${branch.ahead === 0}" data-current="${branch.current}">` +
         `<path d="M${x},${yOf(0)} V${y - BRANCH.bend} Q${x},${y} ${x + BRANCH.bend},${y} H${end}"/>` +
         `<circle class="bfork" cx="${x}" cy="${yOf(0)}" r="3.5"/>${dots}</g>`
       return { svg, end }
