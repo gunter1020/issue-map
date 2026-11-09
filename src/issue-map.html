@@ -514,17 +514,22 @@
   .node[data-status='triage'] .sid {
     fill: var(--aside);
   }
-  /* 已關閉的站點淺一階：它只是進度，不該跟還要做的票搶注意力。圖例用同一支色。 */
+  /*
+   * 已關閉的站點淺一階：它只是進度，不該跟還要做的票搶注意力。圖例用同一支色。
+   * 淺歸淺，仍要讀得到：填色維持 --done-mark，外圈補一道 --done 細描邊，圖形對底色過 3:1
+   * （WCAG 1.4.11）；字用 --muted，過 4.5:1（1.4.3）——--faint 的字只有 3:1 上下。
+   */
   .node[data-status='done'] .mark {
     fill: var(--done-mark);
-    stroke: none;
+    stroke: var(--done);
+    stroke-width: 1.25;
   }
   .node[data-status='done'] .sid {
-    fill: var(--faint);
+    fill: var(--muted);
     font-weight: 500;
   }
   .node[data-status='done'] .sdesc {
-    fill: var(--faint);
+    fill: var(--muted);
   }
   .node.selected .mark {
     stroke: var(--ink);
@@ -721,6 +726,7 @@
   .k-done {
     border-radius: 50%;
     background: var(--done-mark);
+    border: 1.25px solid var(--done);
   }
 
   /* ---------- 清單 ---------- */
