@@ -15,6 +15,7 @@
 
 import { spawn } from 'bun'
 
+import { branchMapFor, type LocalGit, readLocalBranches } from './issue-map-git.ts'
 import { t } from './issue-map-i18n.ts'
 import {
   criticalPathOf,
@@ -402,9 +403,23 @@ export function keptClosed(open: readonly Issue[], fetched: readonly RawIssue[])
     .map((issue) => withParent(issue))
 }
 
-/** `repo` 是 `owner/name`；沒給就畫 gh 從 cwd 推斷出來的那個（CLI 的用法）。 */
-export async function takeSnapshot(repo?: string): Promise<Snapshot> {
-  const gh = ghFor(repo)
+/** 畫哪個 repo、本機分支從哪份 clone 讀。 */
+export type Target = {
+  /** `owner/name`；沒給就畫 gh 從 cwd 推斷出來的那個（CLI 的用法）。 */
+  readonly repo?: string
+  /** 本機 clone 的目錄；沒給就不畫分支。它的 remote 對不上 repo 時也不畫。 */
+  readonly gitDir?: string
+}
+
+export async function takeSnapshot(target: Target = {}): Promise<Snapshot> {
+  // 讀本機分支跟問 GitHub 互不相干，一起跑。讀壞了只少一塊分支圖，票照畫。
+  const local = target.gitDir
+    ? readLocalBranches(target.gitDir).catch((error: unknown) => {
+        console.error(`Skipping local branches: ${(error as Error).message}`)
+        return null
+      })
+    : Promise.resolve(null)
+  const gh = ghFor(target.repo)
   const { nameWithOwner, open: rawOpen } = await fetchOpen(gh)
   const open = rawOpen.map((issue) => withParent(issue))
   const wanted = wantedClosed(open)
@@ -414,17 +429,19 @@ export async function takeSnapshot(repo?: string): Promise<Snapshot> {
   const closedChildren = children.filter((child) => child.state === 'CLOSED')
   const numbers = [...new Set([...wanted.numbers, ...closedChildren.map((c) => c.number)])]
 
-  return assemble(nameWithOwner, open, keptClosed(open, await fetchByNumber(gh, numbers)))
+  const closed = keptClosed(open, await fetchByNumber(gh, numbers))
+  return assemble(nameWithOwner, open, closed, await local)
 }
 
 /**
- * 把抓回來的票推導成一份快照。**沒有 `gh`**——所有輸入都在參數裡，所以整段推導測得到，不必
- * 真的打 GitHub。唯一的外部相依是取現在時間。
+ * 把抓回來的票推導成一份快照。**沒有 `gh`、沒有 git**——所有輸入都在參數裡，所以整段推導測得
+ * 到，不必真的打 GitHub。唯一的外部相依是取現在時間。
  */
 export function assemble(
   nameWithOwner: string,
   open: readonly Issue[],
   closed: readonly Issue[],
+  local: LocalGit | null = null,
 ): Snapshot {
   const openNumbers = new Set(open.map((issue) => issue.number))
   const kept = [...open, ...closed]
@@ -452,6 +469,7 @@ export function assemble(
     groups: groupsOf(issues),
     criticalPath: criticalPathOf(issues),
     issues,
+    branches: branchMapFor(local, nameWithOwner, new Set(issues.map((issue) => issue.number))),
   }
 }
 
@@ -616,6 +634,7 @@ function prerender(html: string, snapshot: Snapshot): string {
     ['stats', view.statsHTML()],
     ['detail', detail.html],
     ['groups', view.groupsHTML()],
+    ['branches', view.branchesHTML()],
     ['list-title', esc(t('list.title'))],
     ['list-sub', esc(t('list.count', { n: rows.shown }))],
     ['tabs', view.tabsHTML('all')],
@@ -682,7 +701,7 @@ export function describe(snapshot: Snapshot): string {
 }
 
 if (import.meta.main) {
-  const snapshot = await takeSnapshot()
+  const snapshot = await takeSnapshot({ gitDir: process.cwd() })
   await Bun.write(OUTPUT, await renderDocument(snapshot))
   console.log(`Wrote ${OUTPUT}: ${describe(snapshot)}`)
 }

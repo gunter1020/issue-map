@@ -3,7 +3,8 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { parseRepo, RecentRepos } from '../app/repos.ts'
+import { RecentRepos } from '../app/repos.ts'
+import { parseRepo } from '../src/issue-map-git.ts'
 
 /**
  * app 沒有 cwd 可推 repo，畫哪個 repo 全看這裡收斂出來的 `owner/name`——收錯了 gh 會去畫

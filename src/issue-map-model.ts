@@ -87,6 +87,38 @@ export type Snapshot = {
   /** 最長的一條依序未完成鏈，也就是最少要幾輪。 */
   readonly criticalPath: number
   readonly issues: readonly MapIssue[]
+  /** 本機 clone 的分支。沒有對得上這個 repo 的本機 clone 就是 `null`，頁面不畫那一塊。 */
+  readonly branches: BranchMap | null
+}
+
+/**
+ * 本機的分支相對於基準分支（預設分支）的處境。全是事實，句子在 i18n 那一層組。
+ *
+ * 只看 commit 圖，所以 squash merge 或 rebase merge 過的分支看起來仍有自己的 commit——那些
+ * commit 確實不在基準分支裡。
+ */
+export type BranchMap = {
+  /** 拿來比的那一條，例如 `main`。 */
+  readonly base: string
+  readonly branches: readonly LocalBranch[]
+  /** 超過上限沒列出來的分支數。 */
+  readonly hidden: number
+}
+
+export type LocalBranch = {
+  readonly name: string
+  /** tip 的短 sha。 */
+  readonly head: string
+  /** tip 的 commit 時間（ISO）。 */
+  readonly committedAt: string
+  /** 基準分支沒有、這條有的 commit 數。0 代表它的 commit 全都已經在基準分支裡。 */
+  readonly ahead: number
+  /** 這條沒有、基準分支有的 commit 數，也就是從分岔點之後基準分支又走了多遠。 */
+  readonly behind: number
+  /** 現在 checkout 的那一條。 */
+  readonly current: boolean
+  /** 分支名裡提到、而且在這份快照裡的票號。名字裡的數字不在快照裡就不算，免得把版本號當票。 */
+  readonly issue: number | null
 }
 
 /**
@@ -100,6 +132,7 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   groups: [],
   criticalPath: 0,
   issues: [],
+  branches: null,
 }
 
 /**

@@ -6,12 +6,19 @@
  */
 
 import { renderFragment, takeSnapshot } from '../src/issue-map.ts'
+import { parseRepo } from '../src/issue-map-git.ts'
 import { isOwnHost, LOOPBACK } from '../src/issue-map-loopback.ts'
-import { errorPage, mapPage, mapPath, pickerPage } from './pages.ts'
-import { parseRepo, RecentRepos } from './repos.ts'
+import { errorPage, mapPage, mapPath, pickerPage, type PickerInput } from './pages.ts'
+import { LocalClones, RecentRepos } from './repos.ts'
 
-/** 地圖頁要的東西：GitHub 認的 repo 名（大小寫照它的）與地圖片段。測試用假的換掉 gh。 */
-export type DrawMap = (repo: string) => Promise<{ repo: string; fragment: string }>
+/**
+ * 地圖頁要的東西：GitHub 認的 repo 名（大小寫照它的）與地圖片段。`gitDir` 是這個 repo 記下來的
+ * 本機 clone，沒有就不畫分支。測試用假的換掉 gh。
+ */
+export type DrawMap = (
+  repo: string,
+  gitDir: string | undefined,
+) => Promise<{ repo: string; fragment: string }>
 
 export interface ServerOptions {
   readonly dataDir: string
@@ -27,8 +34,8 @@ export interface ServerOptions {
  */
 export const PREFERRED_PORT = 47_474
 
-async function drawWithGh(repo: string): Promise<{ repo: string; fragment: string }> {
-  const snapshot = await takeSnapshot(repo)
+const drawWithGh: DrawMap = async (repo, gitDir) => {
+  const snapshot = await takeSnapshot(gitDir === undefined ? { repo } : { repo, gitDir })
   console.log(`${snapshot.repo}: ${snapshot.issues.length} issues (${snapshot.generatedAt})`)
   return { repo: snapshot.repo, fragment: await renderFragment(snapshot) }
 }
@@ -41,29 +48,48 @@ function html(body: string, status = 200): Response {
 
 export function startServer(options: ServerOptions) {
   const recent = new RecentRepos(options.dataDir)
+  const clones = new LocalClones(options.dataDir)
   const drawMap = options.drawMap ?? drawWithGh
   /** 同一個 repo 同時抵達的請求共用一次抓取；不同 repo 互不相干。 */
   const inFlight = new Map<string, ReturnType<DrawMap>>()
 
-  function drawShared(repo: string): ReturnType<DrawMap> {
+  async function drawShared(repo: string): ReturnType<DrawMap> {
     const key = repo.toLowerCase()
     let pending = inFlight.get(key)
     if (!pending) {
-      pending = drawMap(repo).finally(() => inFlight.delete(key))
+      pending = clones
+        .of(repo)
+        .then((gitDir) => drawMap(repo, gitDir))
+        .finally(() => inFlight.delete(key))
       inFlight.set(key, pending)
     }
     return pending
   }
 
+  async function picker(problem?: PickerInput, status = 200): Promise<Response> {
+    const [list, dirs] = await Promise.all([recent.list(), clones.all()])
+    const entries = list.map((repo) => ({ repo, clone: dirs[repo.toLowerCase()] }))
+    return html(pickerPage(entries, problem), status)
+  }
+
   async function route(url: URL): Promise<Response> {
-    if (url.pathname === '/') return html(pickerPage(await recent.list()))
+    if (url.pathname === '/') return picker()
 
     if (url.pathname === '/open') {
       const input = url.searchParams.get('repo') ?? ''
+      const path = url.searchParams.get('path') ?? ''
       const repo = parseRepo(input)
       if (!repo) {
         const message = `"${input.trim()}" is not a repo. Use owner/name, e.g. cli/cli.`
-        return html(pickerPage(await recent.list(), { input, message }), 400)
+        return picker({ input, path, message }, 400)
+      }
+      // 本機目錄是選填的；留空就沿用之前記下的那個。
+      if (path.trim()) {
+        try {
+          await clones.set(repo, path)
+        } catch (error) {
+          return picker({ input, path, message: (error as Error).message }, 400)
+        }
       }
       return new Response(null, { status: 303, headers: { location: mapPath(repo) } })
     }

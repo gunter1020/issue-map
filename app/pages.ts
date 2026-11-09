@@ -46,7 +46,9 @@ const PICKER_STYLE = `<style>
   main { max-width: 560px; margin: 0 auto; padding: 56px 16px; }
   h1 { font-size: 26px; margin: 0 0 4px; }
   p { color: var(--muted); margin: 0 0 24px; }
-  form { display: flex; gap: 8px; }
+  form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  form .hint { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+  li .clone { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
   input {
     flex: 1; min-width: 0; padding: 10px 12px; font: 15px ui-monospace, 'SF Mono', Menlo, monospace;
     color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px;
@@ -67,14 +69,20 @@ const PICKER_STYLE = `<style>
   li a:hover { background: var(--paper); }
 </style>`
 
-/** 首頁：輸入 repo，或從最近開過的裡挑一個。 */
-export function pickerPage(recent: readonly string[], error?: { input: string; message: string }) {
+/** 首頁表單送出去被退回時，原本打的字與原因。 */
+export type PickerInput = { input: string; path: string; message: string }
+
+/** 最近清單的一項；`clone` 是記下來的本機目錄。 */
+export type RecentEntry = { repo: string; clone: string | undefined }
+
+/** 首頁：輸入 repo（可另給本機 clone 讓地圖多畫分支），或從最近開過的裡挑一個。 */
+export function pickerPage(recent: readonly RecentEntry[], error?: PickerInput): string {
   const list = recent.length
     ? `<h2>Recent</h2><ul>${recent
-        .map(
-          (repo) =>
-            `<li><a href="${esc(mapPath(repo))}" data-loading="${esc(`${repo} — fetching…`)}">${esc(repo)}</a></li>`,
-        )
+        .map(({ repo, clone }) => {
+          const where = clone ? `<span class="clone">${esc(clone)}</span>` : ''
+          return `<li><a href="${esc(mapPath(repo))}" data-loading="${esc(`${repo} — fetching…`)}">${esc(repo)}${where}</a></li>`
+        })
         .join('')}</ul>`
     : ''
   const problem = error ? `<p class="error" role="alert">${esc(error.message)}</p>` : ''
@@ -86,6 +94,9 @@ export function pickerPage(recent: readonly string[], error?: { input: string; m
     <input name="repo" value="${esc(error?.input ?? '')}" placeholder="owner/name or a GitHub URL"
       aria-label="Repository" autofocus autocomplete="off" autocapitalize="off" spellcheck="false" required>
     <button data-loading="Fetching…">Open map</button>
+    <input name="path" value="${esc(error?.path ?? '')}" placeholder="Local clone folder (optional), e.g. ~/code/repo"
+      aria-label="Local clone folder" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <p class="hint">With a local clone the map also shows its branches. Leave it empty to keep the folder you set before.</p>
   </form>
   ${problem}
   ${list}

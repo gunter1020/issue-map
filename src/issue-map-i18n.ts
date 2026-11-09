@@ -103,6 +103,21 @@ const EN = {
   'group.undrawn':
     'Map not drawn — nothing here blocks anything. The issues are in the list below.',
 
+  'branches.title': 'Local branches',
+  'branches.sub': {
+    one: 'compared with {base} · {n} branch',
+    other: 'compared with {base} · {n} branches',
+  },
+  'branches.ahead': '{n} ahead',
+  'branches.behind': '{n} behind',
+  'branches.merged': 'nothing of its own — all in {base}',
+  'branches.current': 'checked out',
+  'branches.hidden': {
+    one: '{n} older branch not shown',
+    other: '{n} older branches not shown',
+  },
+  'branches.none': 'No local branches besides {base}.',
+
   'status.ready': 'ready',
   'status.active': 'in progress',
   'status.blocked': 'blocked',
@@ -203,6 +218,15 @@ const ZH_TW: Messages = {
   'group.progress': '子票 {done} / {total} 已完成 · 全關後才關 parent',
   'group.undrawn': '沒有畫圖——這一組裡沒有任何阻擋關係。票在下方清單。',
 
+  'branches.title': '本機分支',
+  'branches.sub': '跟 {base} 比 · {n} 條分支',
+  'branches.ahead': '領先 {n}',
+  'branches.behind': '落後 {n}',
+  'branches.merged': '沒有自己的 commit——全都在 {base} 裡',
+  'branches.current': '目前所在',
+  'branches.hidden': '還有 {n} 條較舊的分支沒列出',
+  'branches.none': '除了 {base} 沒有其他本機分支。',
+
   'status.ready': '可接手',
   'status.active': '進行中',
   'status.blocked': '阻擋中',
@@ -292,6 +316,15 @@ const ZH_CN: Messages = {
   'group.spec': '#{n} 母票规格',
   'group.progress': '子票 {done} / {total} 已完成 · 全关后才关 parent',
   'group.undrawn': '没有画图——这一组里没有任何阻挡关系。票在下方清单。',
+
+  'branches.title': '本地分支',
+  'branches.sub': '与 {base} 比较 · {n} 条分支',
+  'branches.ahead': '领先 {n}',
+  'branches.behind': '落后 {n}',
+  'branches.merged': '没有自己的 commit——全都在 {base} 里',
+  'branches.current': '当前所在',
+  'branches.hidden': '还有 {n} 条较旧的分支没列出',
+  'branches.none': '除了 {base} 没有其他本地分支。',
 
   'status.ready': '可接手',
   'status.active': '进行中',
@@ -387,6 +420,15 @@ const JA: Messages = {
   'group.progress': 'サブチケット {done} / {total} 完了 · すべて閉じてから親を閉じる',
   'group.undrawn':
     '図は描いていません——このグループにはブロック関係がありません。チケットは下の一覧にあります。',
+
+  'branches.title': 'ローカルブランチ',
+  'branches.sub': '{base} と比較 · ブランチ {n} 本',
+  'branches.ahead': '{n} 件先行',
+  'branches.behind': '{n} 件遅れ',
+  'branches.merged': '独自のコミットなし——すべて {base} に含まれる',
+  'branches.current': 'チェックアウト中',
+  'branches.hidden': 'ほかに古いブランチが {n} 本あります（非表示）',
+  'branches.none': '{base} 以外のローカルブランチはありません。',
 
   'status.ready': '着手可',
   'status.active': '対応中',

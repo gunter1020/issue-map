@@ -32,6 +32,9 @@ skill、讓 agent 照著跑——預設的標籤與指令也是從那裡來的�
 | `bunx -p issue-map@latest issue-map-build out.html` | 靜態檔到你指定的路徑             |
 
 - repo 是 `gh` 從 cwd 的 git 推斷的，不必填。
+- 在 clone 裡跑，地圖會多畫一塊**本機分支**：每條分支相對預設分支領先、落後幾個 commit，以及分支名
+  提到的票（`feature/12-…` → #12，#12 要在圖上才算）。clone 的 remote 都不是正在畫的 repo 時不畫，
+  例如 `GH_REPO` 指到別處。分支名也會寫進靜態檔。
 - `ISSUE_MAP_PORT` 固定 port。固定就是嚴格的：被佔住時直接失敗，不會偷偷換一個。
 - server 只聽 `127.0.0.1`——它拿你的 `gh` 登入讀 repo，別台機器連不進來。透過 SSH 看就轉發 port
   （`ssh -L`）。
@@ -54,6 +57,8 @@ bun run app         # 或不建置，直接從原始碼跑
 - 同一張圖、同一個 `gh` 登入。repo 以 `GH_REPO` 交給 `gh`；`ISSUE_MAP_*` 只有從終端機啟動時才吃得
   到，從 Finder 開用的是預設值。
 - GitHub 連結交給預設瀏覽器開。⌘R 重抓，⌘C 複製。
+- 選填本機 clone 的目錄，就能一起看它的分支。會先驗過（是 git 工作目錄，而且有 remote 指向這個
+  repo）才記進 `~/.config/issue-map/clones.json`；下次留空就沿用。
 - 最近開過的 repo 記在 `~/.config/issue-map/recent.json`。server 聽 `127.0.0.1:47474`，語言選擇
   才跨得過重開；那個 port 被佔就換一個，那一次的選擇記不住。
 - 這是開發建置——ad-hoc 簽章、沒有公證——給建置它的那台 Mac 用，不在 npm 套件裡。
@@ -111,18 +116,19 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 
 ## 檔案
 
-| 檔案                        | 責任                                                     |
-| --------------------------- | -------------------------------------------------------- |
-| `src/issue-map.ts`          | 抓快照、算狀態與下一步、產出 HTML。設定在裡面的 `CONFIG` |
-| `src/issue-map-model.ts`    | 純資料模型：分組、關鍵路徑、排版。前後端共用             |
-| `src/issue-map-i18n.ts`     | 四種語言的文案與查表                                     |
-| `src/issue-map-page.ts`     | 瀏覽器端程式碼，建置時被打包進 HTML                      |
-| `src/issue-map.html`        | 樣板。兩個佔位區塊會被填入                               |
-| `src/issue-map-serve.ts`    | 本機 server，每個請求重抓一次                            |
-| `src/issue-map-open.ts`     | 把網址交給預設瀏覽器（CLI 的 `--open`、app 裡的連結）    |
-| `src/issue-map-loopback.ts` | 兩個 server 共用的網路邊界：只聽本機、只認自己的 Host    |
-| `app/`                      | 桌面 app：視窗、server worker、選 repo、macOS 建置       |
-| `tools/mutate.ts`           | 突變測試：改壞一行看測試會不會紅                         |
+| 檔案                        | 責任                                                        |
+| --------------------------- | ----------------------------------------------------------- |
+| `src/issue-map.ts`          | 抓快照、算狀態與下一步、產出 HTML。設定在裡面的 `CONFIG`    |
+| `src/issue-map-model.ts`    | 純資料模型：分組、關鍵路徑、排版。前後端共用                |
+| `src/issue-map-i18n.ts`     | 四種語言的文案與查表                                        |
+| `src/issue-map-page.ts`     | 瀏覽器端程式碼，建置時被打包進 HTML                         |
+| `src/issue-map.html`        | 樣板。兩個佔位區塊會被填入                                  |
+| `src/issue-map-serve.ts`    | 本機 server，每個請求重抓一次                               |
+| `src/issue-map-open.ts`     | 把網址交給預設瀏覽器（CLI 的 `--open`、app 裡的連結）       |
+| `src/issue-map-git.ts`      | 本機 clone：認 GitHub repo 名、算分支相對預設分支的領先落後 |
+| `src/issue-map-loopback.ts` | 兩個 server 共用的網路邊界：只聽本機、只認自己的 Host       |
+| `app/`                      | 桌面 app：視窗、server worker、選 repo、macOS 建置          |
+| `tools/mutate.ts`           | 突變測試：改壞一行看測試會不會紅                            |
 
 ## 在這個 repo 裡開發
 

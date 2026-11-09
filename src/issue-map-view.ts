@@ -55,6 +55,12 @@ const BLOCKERS_SHOWN = 4
 const TRACK_COLOURS = ['--t1', '--t2', '--t3', '--t4']
 
 /**
+ * 分支圖的尺寸（px）。`row` 同時是 SVG 的列距與右邊清單的列高，兩邊靠它對齊。
+ * `maxStations` 是一條線最多畫幾站，再多就只看數字——五十個 commit 畫成五十個點沒有人會數。
+ */
+const BRANCH = { row: 34, left: 16, slot: 26, bend: 10, station: 14, maxStations: 6 } as const
+
+/**
  * 最多畫幾張圖。
  *
  * 一組沒有阻擋關係的票畫出來只是一片點陣，而 `grafana/grafana` 那種規模是 108 組裡 103 組都
@@ -497,6 +503,93 @@ export function viewOf(snapshot: Snapshot) {
       .join('')
   }
 
+  // ---- 本機分支 ----
+
+  /**
+   * 本機分支畫成一條主線加幾條岔出去的線：左邊是 SVG 的軌道，右邊是 HTML 的名字與數字，兩邊用
+   * 同一個列高對齊。名字與票號放 HTML 而不放進 SVG 文字，是為了連結能照一般連結處理、也選得起來
+   * 複製。
+   *
+   * 橫向位置只照「落後幾個」排序、不照比例：落後 2 與落後 400 照比例畫，前者會擠在主線尾端看不
+   * 出來。列的順序是分岔點由右到左，這樣每條往下拐的線都不會穿過上面幾條的橫線。
+   */
+  const branchesHTML = (): string => {
+    const map = snapshot.branches
+    if (!map) return ''
+    const heading =
+      `<div class="group-head"><h2>${esc(t('branches.title'))}</h2>` +
+      `<span class="sub">${esc(t('branches.sub', { base: map.base, n: map.branches.length }))}</span></div>`
+    const hidden = map.hidden
+      ? `<p class="undrawn">${esc(t('branches.hidden', { n: map.hidden }))}</p>`
+      : ''
+    if (!map.branches.length) {
+      return `<section class="group branches">${heading}<p class="undrawn">${esc(t('branches.none', { base: map.base }))}</p>${hidden}</section>`
+    }
+
+    const rows = map.branches.toSorted(
+      (a, b) => a.behind - b.behind || a.name.localeCompare(b.name),
+    )
+    // 主線上的刻度：落後越多越靠左，0 是主線的尾端（現在的基準分支）。
+    const slots = [...new Set([0, ...rows.map((branch) => branch.behind)])].sort((a, b) => b - a)
+    const xOf = (behind: number): number => BRANCH.left + slots.indexOf(behind) * BRANCH.slot
+    const yOf = (row: number): number => BRANCH.row / 2 + row * BRANCH.row
+    const tipX = xOf(0)
+
+    const rails = rows.map((branch, index) => {
+      const x = xOf(branch.behind)
+      const y = yOf(index + 1)
+      const stations = Math.min(branch.ahead, BRANCH.maxStations)
+      const end = x + BRANCH.bend + Math.max(stations, 1) * BRANCH.station
+      const colour = `var(${TRACK_COLOURS[index % TRACK_COLOURS.length]})`
+      const dots = Array.from({ length: stations }, (_, k) => {
+        const cx = x + BRANCH.bend + (k + 1) * BRANCH.station
+        return `<circle class="bstation" cx="${cx}" cy="${y}" r="4"/>`
+      }).join('')
+      const svg =
+        `<g class="brail" style="--track:${colour}" data-merged="${branch.ahead === 0}">` +
+        `<path d="M${x},${yOf(0)} V${y - BRANCH.bend} Q${x},${y} ${x + BRANCH.bend},${y} H${end}"/>` +
+        `<circle class="bfork" cx="${x}" cy="${yOf(0)}" r="3.5"/>${dots}</g>`
+      return { svg, end }
+    })
+    const width = Math.max(tipX, ...rails.map((rail) => rail.end)) + BRANCH.left
+    const height = yOf(rows.length) + BRANCH.row / 2
+    const svg =
+      `<svg class="branch-rails" width="${width}" height="${height}" aria-hidden="true">` +
+      `<path class="bbase" d="M${BRANCH.left / 2},${yOf(0)} H${tipX}"/>` +
+      `<circle class="btip" cx="${tipX}" cy="${yOf(0)}" r="5"/>` +
+      rails.map((rail) => rail.svg).join('') +
+      '</svg>'
+
+    const baseRow = `<li class="brow bbase-row"><code>${esc(map.base)}</code></li>`
+    const branchRows = rows
+      .map((branch) => {
+        const facts = [
+          branch.ahead
+            ? esc(t('branches.ahead', { n: branch.ahead }))
+            : esc(t('branches.merged', { base: map.base })),
+          branch.behind ? esc(t('branches.behind', { n: branch.behind })) : '',
+          esc(dateOnly(branch.committedAt)),
+        ].filter(Boolean)
+        const issue = branch.issue === null ? undefined : issueAt(branch.issue)
+        const ticket = issue ? `${link(issue.number)} ${pill(issue)}` : ''
+        const current = branch.current
+          ? `<span class="bcurrent">${esc(t('branches.current'))}</span>`
+          : ''
+        return (
+          `<li class="brow" data-current="${branch.current}">` +
+          `<code class="bname" title="${esc(`${branch.name} @ ${branch.head}`)}">${esc(branch.name)}</code>` +
+          `${current}${ticket}<span class="bmeta">${facts.join(' · ')}</span></li>`
+        )
+      })
+      .join('')
+
+    return (
+      `<section class="group branches">${heading}` +
+      `<div class="map-wrap"><div class="branch-map" style="--brow:${BRANCH.row}px">${svg}` +
+      `<ol class="branch-rows">${baseRow}${branchRows}</ol></div></div>${hidden}</section>`
+    )
+  }
+
   // ---- 詳細 ----
 
   /** 一張票的細節。上面的面板與清單裡展開的那一列共用同一份標記。 */
@@ -686,6 +779,7 @@ export function viewOf(snapshot: Snapshot) {
     statsHTML,
     footerHTML,
     groupsHTML,
+    branchesHTML,
     detailHTML,
     detailPanelHTML,
     rowsHTML,
