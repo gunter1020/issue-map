@@ -55,10 +55,20 @@ const BLOCKERS_SHOWN = 4
 const TRACK_COLOURS = ['--t1', '--t2', '--t3', '--t4']
 
 /**
- * 分支圖的尺寸（px）。`row` 同時是 SVG 的列距與右邊清單的列高，兩邊靠它對齊。
- * `maxStations` 是一條線最多畫幾站，再多就只看數字——五十個 commit 畫成五十個點沒有人會數。
+ * 分支圖的尺寸（px）。`row` 同時是 SVG 的列距與右邊清單的列高，兩邊靠它對齊。`lane` 是兩條直線
+ * 的間距，`slot` 是主線上兩個分岔點的間距，`guide` 是最右邊那條線到名字之間導引線的長度。
+ * `maxStations` 是一條線最多畫幾個點，再多就只看數字——五十個 commit 畫成五十個點沒有人會數。
  */
-const BRANCH = { row: 34, left: 16, slot: 26, bend: 10, station: 14, maxStations: 6 } as const
+const BRANCH = {
+  row: 34,
+  left: 14,
+  lane: 18,
+  slot: 16,
+  bend: 8,
+  dotGap: 8,
+  guide: 24,
+  maxStations: 6,
+} as const
 
 /**
  * 最多畫幾張圖。
@@ -506,15 +516,18 @@ export function viewOf(snapshot: Snapshot) {
   // ---- 本機分支 ----
 
   /**
-   * 本機分支畫成一條主線加幾條岔出去的線：左邊是 SVG 的軌道，右邊是 HTML 的名字與數字，兩邊用
-   * 同一個列高對齊。名字與票號放 HTML 而不放進 SVG 文字，是為了連結能照一般連結處理、也選得起來
-   * 複製。
+   * 本機分支畫成直立的線圖，時間由上往下（上面新、下面舊），跟 `git log --graph` 同一個方向：
+   * 每條分支一條直線，從它那一列的 tip 往下走到分岔點，再拐進最左邊的主線；主線的 tip 在所有分支
+   * 下面那一列，再往下是各分岔點。左邊是 SVG 的線，右邊是 HTML 的名字與數字，兩邊用同一個列高
+   * 對齊，tip 到名字之間拉一條虛導引線。名字與票號放 HTML 而不放進 SVG 文字，是為了連結能照一般
+   * 連結處理、也選得起來複製。
    *
-   * 橫向位置只照「落後幾個」排序、不照比例：落後 2 與落後 400 照比例畫，前者會擠在主線尾端看不
-   * 出來。列的順序是分岔點由右到左，這樣每條往下拐的線都不會穿過上面幾條的橫線。
+   * 分岔點的高低只照「落後幾個」排序、不照比例：落後 2 與落後 400 照比例畫，前者會擠在主線頂端
+   * 看不出來。分岔越新的分支排越上面、也越靠主線，這樣拐進主線的線不會穿過其他分支的直線，
+   * 導引線也不會穿過別條線。
    *
    * 線一律是中性色、commit 是實心小點：同一頁上顏色與空心圓都已經是票的狀態，分支線借用任何一個
-   * 都會被讀成那個狀態。每條線旁邊就是它的名字，不靠顏色分辨是哪一條。
+   * 都會被讀成那個狀態。每條線那一列就是它的名字，不靠顏色分辨是哪一條。
    */
   const branchesHTML = (): string => {
     const map = snapshot.branches
@@ -532,34 +545,45 @@ export function viewOf(snapshot: Snapshot) {
     const rows = map.branches.toSorted(
       (a, b) => a.behind - b.behind || a.name.localeCompare(b.name),
     )
-    // 主線上的刻度：落後越多越靠左，0 是主線的尾端（現在的基準分支）。
-    const slots = [...new Set([0, ...rows.map((branch) => branch.behind)])].sort((a, b) => b - a)
-    const xOf = (behind: number): number => BRANCH.left + slots.indexOf(behind) * BRANCH.slot
     const yOf = (row: number): number => BRANCH.row / 2 + row * BRANCH.row
-    const tipX = xOf(0)
+    const xOf = (lane: number): number => BRANCH.left + lane * BRANCH.lane
+    const mainX = xOf(0)
+    // 主線的 tip 在所有分支底下那一列；往下依落後數排出分岔點，落後 0 就是主線的 tip 本身。
+    const mainY = yOf(rows.length)
+    const behinds = [...new Set([0, ...rows.map((branch) => branch.behind)])].sort((a, b) => a - b)
+    const forkY = (behind: number): number => mainY + behinds.indexOf(behind) * BRANCH.slot
+    const bottom = forkY(behinds.at(-1) ?? 0)
+    const width = xOf(rows.length) + BRANCH.guide
 
     const rails = rows.map((branch, index) => {
-      const x = xOf(branch.behind)
-      const y = yOf(index + 1)
-      const stations = Math.min(branch.ahead, BRANCH.maxStations)
-      const end = x + BRANCH.bend + Math.max(stations, 1) * BRANCH.station
-      const dots = Array.from({ length: stations }, (_, k) => {
-        const cx = x + BRANCH.bend + (k + 1) * BRANCH.station
-        return `<circle class="bstation" cx="${cx}" cy="${y}" r="3"/>`
-      }).join('')
-      const svg =
+      const x = xOf(index + 1)
+      const tipY = yOf(index)
+      const joinY = forkY(branch.behind)
+      // tip 本身就是一個 commit；其餘往下排，排到快碰到拐彎處就停——確切數字在右邊的文字裡。
+      const room = Math.floor((joinY - BRANCH.bend - tipY) / BRANCH.dotGap)
+      const stations = Math.min(branch.ahead, BRANCH.maxStations, room + 1)
+      const dots = Array.from(
+        { length: stations },
+        (_, k) => `<circle class="bstation" cx="${x}" cy="${tipY + k * BRANCH.dotGap}" r="3"/>`,
+      ).join('')
+      return (
         `<g class="brail" data-merged="${branch.ahead === 0}" data-current="${branch.current}">` +
-        `<path d="M${x},${yOf(0)} V${y - BRANCH.bend} Q${x},${y} ${x + BRANCH.bend},${y} H${end}"/>` +
-        `<circle class="bfork" cx="${x}" cy="${yOf(0)}" r="3.5"/>${dots}</g>`
-      return { svg, end }
+        `<path class="bguide" d="M${x + BRANCH.bend},${tipY} H${width}"/>` +
+        `<path d="M${x},${tipY} V${joinY - BRANCH.bend} Q${x},${joinY} ${x - BRANCH.bend},${joinY} H${mainX}"/>` +
+        `${dots}</g>`
+      )
     })
-    const width = Math.max(tipX, ...rails.map((rail) => rail.end)) + BRANCH.left
-    const height = yOf(rows.length) + BRANCH.row / 2
+    const forks = behinds
+      .filter((behind) => behind > 0)
+      .map((behind) => `<circle class="bfork" cx="${mainX}" cy="${forkY(behind)}" r="3"/>`)
+      .join('')
     const svg =
-      `<svg class="branch-rails" width="${width}" height="${height}" aria-hidden="true">` +
-      `<path class="bbase" d="M${BRANCH.left / 2},${yOf(0)} H${tipX}"/>` +
-      `<circle class="btip" cx="${tipX}" cy="${yOf(0)}" r="5"/>` +
-      rails.map((rail) => rail.svg).join('') +
+      `<svg class="branch-rails" width="${width}" height="${bottom + BRANCH.row / 2}" aria-hidden="true">` +
+      `<path class="bguide" d="M${mainX + BRANCH.bend},${mainY} H${width}"/>` +
+      `<path class="bbase" d="M${mainX},${mainY} V${bottom + BRANCH.row / 3}"/>` +
+      rails.join('') +
+      forks +
+      `<circle class="btip" cx="${mainX}" cy="${mainY}" r="5"/>` +
       '</svg>'
 
     const baseRow = `<li class="brow bbase-row"><code>${esc(map.base)}</code></li>`
@@ -588,7 +612,7 @@ export function viewOf(snapshot: Snapshot) {
     return (
       `<section class="group branches">${heading}` +
       `<div class="map-wrap"><div class="branch-map" style="--brow:${BRANCH.row}px">${svg}` +
-      `<ol class="branch-rows">${baseRow}${branchRows}</ol></div></div>${hidden}</section>`
+      `<ol class="branch-rows">${branchRows}${baseRow}</ol></div></div>${hidden}</section>`
     )
   }
 
