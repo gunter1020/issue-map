@@ -204,10 +204,12 @@ const OPEN_QUERY = `
 
 /** open issue 全部都要，所以一路翻到底——票超過一頁不是錯誤，是常態。 */
 async function fetchOpen(): Promise<{ nameWithOwner: string; open: RawIssue[] }> {
-  type Result = { repository: { nameWithOwner: string; issues: Page<RawIssue> } }
+  type Result = { repository: { nameWithOwner: string; issues: Page<RawIssue> } | null }
   let nameWithOwner = ''
   const open = await collect<RawIssue>(async (after) => {
     const { repository } = await run<Result>(OPEN_QUERY, after ? { after } : {})
+    // repo 本身查不到也是 NOT_FOUND，`dataOrThrow` 會放行；跟查不到某張票不同，這時沒有圖可畫。
+    if (!repository) throw new Error('Repository not found, or your gh login cannot read it')
     nameWithOwner = repository.nameWithOwner
     return repository.issues
   })
