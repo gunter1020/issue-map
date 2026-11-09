@@ -792,6 +792,17 @@ describe('本機分支', () => {
     expect(html.match(/<g class="brail"[^>]*data-current="true"/g)?.length).toBe(1)
   })
 
+  /**
+   * 時間由上往下：分支的 tip 比基準分支的 tip 新，所以基準分支那一列在所有分支下面。順序反了，
+   * 每條分支的直線就得往上走才接得到主線。
+   */
+  test('基準分支那一列排在所有分支下面', () => {
+    const html = branchesOf([branch('a'), branch('b', { behind: 2 })])
+    const rows = [...html.matchAll(/<li class="brow([^"]*)"/g)].map((m) => m[1])
+    expect(rows.at(-1)).toBe(' bbase-row')
+    expect(rows.filter((kind) => kind === ' bbase-row')).toHaveLength(1)
+  })
+
   test('超過上限沒列的分支報數量', () => {
     expect(branchesOf([branch('a')], 3)).toContain('3 older branches not shown')
   })

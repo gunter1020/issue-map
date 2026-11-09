@@ -600,10 +600,9 @@
   .btip {
     fill: var(--ink);
   }
+  /* 主線上的分岔點也是 commit：實心，跟分支上的點同一種形狀。 */
   .bfork {
-    fill: var(--card);
-    stroke: var(--ink);
-    stroke-width: 2;
+    fill: var(--ink);
   }
   /*
    * 分支線不用線色盤也不用狀態色：那些顏色在這一頁上都已經代表票的狀態。一律中性的 --muted，
@@ -631,6 +630,14 @@
     stroke: var(--line-strong);
     stroke-dasharray: 5 4;
     stroke-width: 2;
+  }
+  /* tip 到右邊名字的導引線：只幫眼睛對列，比任何一條線都淡。放最後，蓋過上面三條同權重的規則。 */
+  .bguide,
+  .brail path.bguide {
+    fill: none;
+    stroke: var(--line-strong);
+    stroke-width: 1;
+    stroke-dasharray: 1 3;
   }
   .branch-rows {
     list-style: none;
