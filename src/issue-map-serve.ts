@@ -18,9 +18,8 @@
  *   ISSUE_MAP_PORT=4747 bun run issue-map:serve   # 固定網址，--watch 重啟後還是同一個
  */
 
-import { spawnSync } from 'bun'
-
 import { describe, renderDocument, takeSnapshot } from './issue-map.ts'
+import { openInBrowser } from './issue-map-open.ts'
 
 // `PORT` 是 Claude 桌面 app 的 launch.json 在 autoPort 換 port 時塞進來的。都沒設就是 0：
 // 由 OS 指派，`server.port` 才是真的在聽的那個。
@@ -36,22 +35,6 @@ if (unknownArgs.length > 0) {
   process.exit(2)
 }
 const OPEN = args.includes('--open')
-
-/** 開系統預設瀏覽器。**打不開不算失敗**：server 已經起來了，印出網址讓人自己開就好。 */
-function openInBrowser(url: string): void {
-  const command =
-    process.platform === 'darwin'
-      ? ['open', url]
-      : process.platform === 'win32'
-        ? ['cmd', '/c', 'start', '', url]
-        : ['xdg-open', url]
-  const result = spawnSync(command, { stdout: 'ignore', stderr: 'pipe' })
-  if (!result.success) {
-    console.error(
-      `Could not open the browser (${command[0]}: ${result.stderr.toString().trim()}) — open the URL above yourself`,
-    )
-  }
-}
 
 /**
  * 同時抵達的請求共用同一次抓取。

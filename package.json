@@ -28,6 +28,8 @@
   "scripts": {
     "issue-map": "bun run src/issue-map.ts",
     "issue-map:serve": "bun --watch src/issue-map-serve.ts",
+    "app": "bun app/main.ts",
+    "app:build": "bun app/build.ts",
     "typecheck": "tsc --noEmit",
     "mutate": "bun run tools/mutate.ts",
     "format": "oxfmt .",
@@ -40,7 +42,8 @@
     "@types/bun": "^1.4.2",
     "oxfmt": "^0.67.0",
     "oxlint": "^1.76.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "webview-bun": "^2.4.0"
   },
   "engines": {
     "bun": ">=1.0.0"

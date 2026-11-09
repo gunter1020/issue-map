@@ -22,5 +22,5 @@
     "types": ["bun"]
   },
   // 測試也納入檢查：量測工具出錯比出貨程式出錯更難發現，因為錯的是「用來判斷對錯的那把尺」。
-  "include": ["src/**/*.ts", "tools/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "app/**/*.ts", "tools/**/*.ts", "tests/**/*.ts"]
 }

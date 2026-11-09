@@ -39,6 +39,26 @@ as a skill, let the agent run it — which is where the default labels and comma
   listing of the issues rather than a blank page.
 - `@latest` takes the newest version on npm; pin one with `bunx issue-map@0.2.0`.
 
+## Desktop app (macOS)
+
+A window of its own instead of a browser tab. A double-clicked app has no cwd to infer the repo
+from, so you pick it inside the window; the ones you opened are listed for next time.
+
+```bash
+bun install
+bun run app:build   # dist/app/bun-darwin-<arch>/issue-map.app
+bun run app         # or run it from source without building
+```
+
+- Same map, same `gh` login. The repo reaches `gh` as `GH_REPO`; the `ISSUE_MAP_*` variables only
+  apply when you start it from a terminal, a Finder launch uses the defaults.
+- GitHub links open in your default browser. ⌘R re-fetches, ⌘C copies.
+- Recent repos live in `~/.config/issue-map/recent.json`. The server listens on `127.0.0.1:47474`
+  so the language choice survives restarts; if that port is taken it moves, and the choice is not
+  kept for that run.
+- It is a development build — ad-hoc signed, not notarised — meant for the Mac that built it. It is
+  not part of the npm package.
+
 ## Requirements
 
 - **Bun** — these scripts use `Bun.build`, `Bun.serve` and `Bun.file`; Node will not run them.
@@ -106,6 +126,8 @@ tree.
 | `src/issue-map-page.ts`  | Browser-side code, bundled into the HTML at build time                   |
 | `src/issue-map.html`     | The template. Two placeholder blocks get filled in                       |
 | `src/issue-map-serve.ts` | Local server, re-fetches on every request                                |
+| `src/issue-map-open.ts`  | Hands a URL to the default browser (CLI `--open`, links in the app)      |
+| `app/`                   | Desktop app: window, server worker, repo picker, macOS build             |
 | `tools/mutate.ts`        | Mutation testing: break one line, see whether a test goes red            |
 
 ## Developing in this repo
