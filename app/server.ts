@@ -2,11 +2,11 @@
  * app 的本機 HTTP server：選 repo 的首頁、每個 repo 一頁地圖。跑在 worker 裡——WebView 的
  * `run()` 會佔住主執行緒，server 放在主執行緒就永遠回不了請求。
  *
- * 只聽 127.0.0.1，並且只接受 Host 正好是自己的請求：這個 server 會用使用者的 gh 登入去讀
- * repo，DNS rebinding 能讓別的網站以為自己就是這個 origin，擋 Host 就是擋這一招。
+ * 只聽 loopback、只認自己的 Host，與 CLI server 同一套規則，見 `src/issue-map-loopback.ts`。
  */
 
 import { renderFragment, takeSnapshot } from '../src/issue-map.ts'
+import { isOwnHost, LOOPBACK } from '../src/issue-map-loopback.ts'
 import { errorPage, mapPage, mapPath, pickerPage } from './pages.ts'
 import { parseRepo, RecentRepos } from './repos.ts'
 
@@ -87,10 +87,10 @@ export function startServer(options: ServerOptions) {
 
   function serve(port: number) {
     return Bun.serve({
-      hostname: '127.0.0.1',
+      hostname: LOOPBACK,
       port,
       async fetch(request) {
-        if (request.headers.get('host') !== `127.0.0.1:${server.port}`) {
+        if (!isOwnHost(request.headers.get('host'), server.port)) {
           return new Response('Forbidden host', { status: 403 })
         }
         if (request.method !== 'GET') return new Response(null, { status: 405 })
@@ -109,7 +109,7 @@ export function startServer(options: ServerOptions) {
   }
 
   return {
-    url: `http://127.0.0.1:${server.port}/`,
+    url: `http://${LOOPBACK}:${server.port}/`,
     stop: () => server.stop(true),
   }
 }

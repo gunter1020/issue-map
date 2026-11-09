@@ -19,6 +19,7 @@
  */
 
 import { describe, renderDocument, takeSnapshot } from './issue-map.ts'
+import { isOwnHost, LOOPBACK } from './issue-map-loopback.ts'
 import { openInBrowser } from './issue-map-open.ts'
 
 // `PORT` 是 Claude 桌面 app 的 launch.json 在 autoPort 換 port 時塞進來的。都沒設就是 0：
@@ -57,9 +58,14 @@ function pageShared(): Promise<string> {
   return inFlight
 }
 
+// 只聽 loopback、只認自己的 Host，理由見 `issue-map-loopback.ts`。
 const server = Bun.serve({
+  hostname: LOOPBACK,
   port: PORT,
   async fetch(request) {
+    if (!isOwnHost(request.headers.get('host'), server.port)) {
+      return new Response('Forbidden host', { status: 403 })
+    }
     const { pathname } = new URL(request.url)
     if (pathname !== '/') return new Response(null, { status: 404 })
     try {
@@ -77,7 +83,8 @@ const server = Bun.serve({
   },
 })
 
-const url = `http://localhost:${server.port}`
+// 印 127.0.0.1 而不是 localhost：有些系統的 localhost 先解析成 ::1，而 server 只聽 IPv4。
+const url = `http://${LOOPBACK}:${server.port}`
 console.log(`Dev map for ${process.cwd()}`)
 console.log(`  ${url} (every refresh re-fetches from GitHub)`)
 if (OPEN) openInBrowser(url)

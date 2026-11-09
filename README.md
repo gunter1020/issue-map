@@ -33,6 +33,8 @@ as a skill, let the agent run it — which is where the default labels and comma
 
 - The repo comes from `gh` reading the git remote in your cwd — nothing to fill in.
 - `ISSUE_MAP_PORT` pins the port. Pinned is strict: it fails rather than moving if taken.
+- The server listens on `127.0.0.1` only, since it reads repos with your `gh` login; other machines
+  cannot reach it. Over SSH, forward the port (`ssh -L`).
 - `--open` opens a browser tab; without it the server only prints the URL.
 - A static file goes stale. Use the server when you need the current state.
 - Where scripts cannot run (a strict CSP, some preview panes) the file falls back to a plain
@@ -118,17 +120,18 @@ tree.
 
 ## Files
 
-| File                     | Responsibility                                                           |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `src/issue-map.ts`       | Snapshot, status and next step, produces the HTML. Knobs in its `CONFIG` |
-| `src/issue-map-model.ts` | Pure data model: grouping, critical path, layout. Shared by both sides   |
-| `src/issue-map-i18n.ts`  | Strings for the four languages, plus the lookup                          |
-| `src/issue-map-page.ts`  | Browser-side code, bundled into the HTML at build time                   |
-| `src/issue-map.html`     | The template. Two placeholder blocks get filled in                       |
-| `src/issue-map-serve.ts` | Local server, re-fetches on every request                                |
-| `src/issue-map-open.ts`  | Hands a URL to the default browser (CLI `--open`, links in the app)      |
-| `app/`                   | Desktop app: window, server worker, repo picker, macOS build             |
-| `tools/mutate.ts`        | Mutation testing: break one line, see whether a test goes red            |
+| File                        | Responsibility                                                           |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `src/issue-map.ts`          | Snapshot, status and next step, produces the HTML. Knobs in its `CONFIG` |
+| `src/issue-map-model.ts`    | Pure data model: grouping, critical path, layout. Shared by both sides   |
+| `src/issue-map-i18n.ts`     | Strings for the four languages, plus the lookup                          |
+| `src/issue-map-page.ts`     | Browser-side code, bundled into the HTML at build time                   |
+| `src/issue-map.html`        | The template. Two placeholder blocks get filled in                       |
+| `src/issue-map-serve.ts`    | Local server, re-fetches on every request                                |
+| `src/issue-map-open.ts`     | Hands a URL to the default browser (CLI `--open`, links in the app)      |
+| `src/issue-map-loopback.ts` | Network boundary shared by both servers: loopback only, own Host only    |
+| `app/`                      | Desktop app: window, server worker, repo picker, macOS build             |
+| `tools/mutate.ts`           | Mutation testing: break one line, see whether a test goes red            |
 
 ## Developing in this repo
 
