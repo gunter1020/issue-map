@@ -41,6 +41,26 @@ Agent は 1 ラウンドに 1 枚しか扱えないので、毎ラウンド実�
   プレーンな一覧にフォールバックします。
 - `@latest` は npm 上の最新版です。固定するなら `bunx issue-map@0.2.0`。
 
+## デスクトップ app（macOS）
+
+ブラウザのタブではなく専用のウィンドウで見ます。ダブルクリックで開く app には repo を推測する cwd
+がないので、ウィンドウの中で選びます。開いた repo は一覧に残り、次回はクリックするだけです。
+
+```bash
+bun install
+bun run app:build   # dist/app/bun-darwin-<arch>/issue-map.app
+bun run app         # ビルドせずソースから起動することもできる
+```
+
+- 地図も `gh` のログインも同じです。repo は `GH_REPO` として `gh` に渡ります。`ISSUE_MAP_*` が効く
+  のはターミナルから起動したときだけで、Finder から開くと既定値になります。
+- GitHub のリンクは既定のブラウザで開きます。⌘R で取り直し、⌘C でコピー。
+- 最近開いた repo は `~/.config/issue-map/recent.json` に残ります。server は `127.0.0.1:47474` で
+  待ち受けるので、言語の選択が再起動後も残ります。その port が使用中なら別の port に移り、その回の
+  選択は残りません。
+- 開発用ビルド（ad-hoc 署名、公証なし）で、ビルドした Mac で使うためのものです。npm パッケージには
+  含まれません。
+
 ## 前提条件
 
 - **Bun**——`Bun.build`、`Bun.serve`、`Bun.file` を使っているので、Node では動きません。
@@ -106,6 +126,8 @@ CLI 側（生成メッセージ、エラー）は英語のみです。
 | `src/issue-map-page.ts`  | ブラウザ側のコード。ビルド時に HTML へバンドルされる                   |
 | `src/issue-map.html`     | テンプレート。2 つのプレースホルダが埋められる                         |
 | `src/issue-map-serve.ts` | ローカル server。リクエストごとに取り直す                              |
+| `src/issue-map-open.ts`  | URL を既定のブラウザに渡す（CLI の `--open`、app 内のリンク）          |
+| `app/`                   | デスクトップ app：ウィンドウ、server worker、repo 選択、macOS ビルド   |
 | `tools/mutate.ts`        | ミューテーションテスト：1 行を壊してテストが赤くなるか見る             |
 
 ## この repo で開発する

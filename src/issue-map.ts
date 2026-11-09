@@ -25,9 +25,15 @@ import {
   type Status,
 } from './issue-map-model.ts'
 import { esc, langOptionsHTML, viewOf } from './issue-map-view.ts'
+// 樣板用 import 帶進來而不是執行時讀檔：編譯成單一執行檔（`app/build.ts`）之後旁邊沒有原始檔可讀。
+// bun-types 把 `*.html` 宣告成全端 server 的 HTMLBundle，`type: 'text'` 實際拿到的是字串。
+import templateText from './issue-map.html' with { type: 'text' }
 
-const TEMPLATE = new URL('./issue-map.html', import.meta.url).pathname
+const TEMPLATE = templateText as unknown as string
 const CLIENT = new URL('./issue-map-page.ts', import.meta.url).pathname
+
+/** `app/build.ts` 編譯時用 `define` 塞進預先打包好的畫面程式；從原始碼跑時不存在。 */
+declare const ISSUE_MAP_CLIENT: string | undefined
 const OUTPUT = process.argv[2] ?? 'dist/issue-map.html'
 
 /** 一頁的張數。GraphQL 的 `first` 最多就是 100，票再多就靠 cursor 一頁一頁接。 */
@@ -137,8 +143,14 @@ export function dataOrThrow<T>(stdout: string, stderr: string): T {
   return parsed.data
 }
 
+/** 對同一個 repo 跑一次 `gh api graphql`。一次快照的每一趟都走同一個，才不會半路換了 repo。 */
+type Gh = <T>(query: string, variables?: Record<string, string>) => Promise<T>
+
 /**
- * 跑一次 `gh api graphql`。
+ * 綁定 repo 的 `gh api graphql`。
+ *
+ * `repo` 沒給就照 gh 自己的規則：`GH_REPO`，沒有就從 cwd 的 git 推斷。給了就只蓋**這幾個子行程**
+ * 的 `GH_REPO`——app 同時替好幾個 repo 抓，改 `process.env` 的話兩個請求會互相蓋掉。
  *
  * 票號是我們自己從前一次結果拿到的整數，直接組進查詢字串；只有 cursor 走變數——它是 API 給的
  * 不透明字串，沒有理由自己去逃脫它。
@@ -146,28 +158,31 @@ export function dataOrThrow<T>(stdout: string, stderr: string): T {
  * **非同步**：互不相干的查詢要能一起送，同步等一個子行程就不可能並行；而 server 那邊同步等
  * 還會把整條 event loop 卡住，第二個瀏覽器分頁得等第一個抓完才拿得到回應。
  */
-async function run<T>(query: string, variables: Record<string, string> = {}): Promise<T> {
-  // `{owner}`／`{repo}` 由 gh 從 cwd 的 git 推斷，`GH_REPO` 可以蓋過去。
-  const args = [
-    'gh',
-    'api',
-    'graphql',
-    '-f',
-    `query=${query}`,
-    '-F',
-    'owner={owner}',
-    '-F',
-    'repo={repo}',
-  ]
-  for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
-  const proc = spawn(args, { stdout: 'pipe', stderr: 'pipe' })
-  // 兩條管子一起收：先讀完一條再讀另一條的話，另一條寫滿緩衝就會卡住整個行程。
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  await proc.exited
-  return dataOrThrow<T>(stdout, stderr)
+function ghFor(repo: string | undefined): Gh {
+  const env = repo === undefined ? {} : { env: { ...process.env, GH_REPO: repo } }
+  return async <T>(query: string, variables: Record<string, string> = {}): Promise<T> => {
+    // `{owner}`／`{repo}` 由 gh 換成 `GH_REPO` 或 cwd 推斷出來的那個 repo。
+    const args = [
+      'gh',
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      'owner={owner}',
+      '-F',
+      'repo={repo}',
+    ]
+    for (const [name, value] of Object.entries(variables)) args.push('-f', `${name}=${value}`)
+    const proc = spawn(args, { stdout: 'pipe', stderr: 'pipe', ...env })
+    // 兩條管子一起收：先讀完一條再讀另一條的話，另一條寫滿緩衝就會卡住整個行程。
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    await proc.exited
+    return dataOrThrow<T>(stdout, stderr)
+  }
 }
 
 /**
@@ -203,11 +218,11 @@ const OPEN_QUERY = `
   }`
 
 /** open issue 全部都要，所以一路翻到底——票超過一頁不是錯誤，是常態。 */
-async function fetchOpen(): Promise<{ nameWithOwner: string; open: RawIssue[] }> {
+async function fetchOpen(gh: Gh): Promise<{ nameWithOwner: string; open: RawIssue[] }> {
   type Result = { repository: { nameWithOwner: string; issues: Page<RawIssue> } | null }
   let nameWithOwner = ''
   const open = await collect<RawIssue>(async (after) => {
-    const { repository } = await run<Result>(OPEN_QUERY, after ? { after } : {})
+    const { repository } = await gh<Result>(OPEN_QUERY, after ? { after } : {})
     // repo 本身查不到也是 NOT_FOUND，`dataOrThrow` 會放行；跟查不到某張票不同，這時沒有圖可畫。
     if (!repository) throw new Error('Repository not found, or your gh login cannot read it')
     nameWithOwner = repository.nameWithOwner
@@ -242,11 +257,15 @@ export function aliasedQuery(batch: readonly number[], selection: string): strin
   }`
 }
 
-async function byAlias<T>(numbers: readonly number[], selection: string): Promise<Map<number, T>> {
+async function byAlias<T>(
+  gh: Gh,
+  numbers: readonly number[],
+  selection: string,
+): Promise<Map<number, T>> {
   type Result = { repository: Record<string, T | null> }
   const batches = chunks(numbers, BATCH)
   const answers = await Promise.all(
-    batches.map(async (batch) => (await run<Result>(aliasedQuery(batch, selection))).repository),
+    batches.map(async (batch) => (await gh<Result>(aliasedQuery(batch, selection))).repository),
   )
   const found = new Map<number, T>()
   batches.forEach((batch, index) => {
@@ -260,8 +279,8 @@ async function byAlias<T>(numbers: readonly number[], selection: string): Promis
 }
 
 /** 指名要哪幾張票的完整欄位。查不到的就當沒有。 */
-async function fetchByNumber(numbers: readonly number[]): Promise<RawIssue[]> {
-  return [...(await byAlias<RawIssue>(numbers, ISSUE_FIELDS)).values()]
+async function fetchByNumber(gh: Gh, numbers: readonly number[]): Promise<RawIssue[]> {
+  return [...(await byAlias<RawIssue>(gh, numbers, ISSUE_FIELDS)).values()]
 }
 
 /** 子票這一趟只問票號與狀態，完整欄位留給指名去要的那一趟。 */
@@ -292,9 +311,10 @@ function childrenQuery(parent: number): string {
  * 只有 GitHub 原生 sub-issue 有值；用內文 `## Parent` 慣例的 repo 這裡是空的（檔頭說的那個
  * 代價）。
  */
-async function fetchChildren(parents: readonly number[]): Promise<ChildState[]> {
+async function fetchChildren(gh: Gh, parents: readonly number[]): Promise<ChildState[]> {
   type More = { repository: { issue: { subIssues: Page<ChildState> } | null } }
   const first = await byAlias<{ subIssues: Page<ChildState> }>(
+    gh,
     parents,
     `subIssues(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { ${CHILD_FIELDS} } }`,
   )
@@ -309,7 +329,7 @@ async function fetchChildren(parents: readonly number[]): Promise<ChildState[]> 
     rest.push(
       collect<ChildState>(
         async (after) =>
-          (await run<More>(childrenQuery(parent), after ? { after } : {})).repository.issue
+          (await gh<More>(childrenQuery(parent), after ? { after } : {})).repository.issue
             ?.subIssues ?? null,
         endCursor,
       ),
@@ -382,17 +402,19 @@ export function keptClosed(open: readonly Issue[], fetched: readonly RawIssue[])
     .map((issue) => withParent(issue))
 }
 
-export async function takeSnapshot(): Promise<Snapshot> {
-  const { nameWithOwner, open: rawOpen } = await fetchOpen()
+/** `repo` 是 `owner/name`；沒給就畫 gh 從 cwd 推斷出來的那個（CLI 的用法）。 */
+export async function takeSnapshot(repo?: string): Promise<Snapshot> {
+  const gh = ghFor(repo)
+  const { nameWithOwner, open: rawOpen } = await fetchOpen(gh)
   const open = rawOpen.map((issue) => withParent(issue))
   const wanted = wantedClosed(open)
 
   // 先用最便宜的一趟問出子票的狀態，再讓完整欄位只抓一次、只抓真的要留下的那些。
-  const children = await fetchChildren(wanted.parents)
+  const children = await fetchChildren(gh, wanted.parents)
   const closedChildren = children.filter((child) => child.state === 'CLOSED')
   const numbers = [...new Set([...wanted.numbers, ...closedChildren.map((c) => c.number)])]
 
-  return assemble(nameWithOwner, open, keptClosed(open, await fetchByNumber(numbers)))
+  return assemble(nameWithOwner, open, keptClosed(open, await fetchByNumber(gh, numbers)))
 }
 
 /**
@@ -543,8 +565,11 @@ function describeIssue(raw: Issue, repo: RepoFacts): MapIssue {
  *
  * 產出必須是一個檔案，但來源不必——來源是 TypeScript，所以型別跟這裡共用同一份定義，而且純
  * 推導測得到。`format: 'iife'` 是因為它要塞進行內；不 minify 是因為這是開發用的頁面。
+ *
+ * 編譯好的 app 沒有原始檔可打包，用的是 `app/build.ts` 呼叫這一支先打包好、塞進執行檔的那份。
  */
-async function bundleClient(): Promise<string> {
+export async function bundleClient(): Promise<string> {
+  if (typeof ISSUE_MAP_CLIENT === 'string') return ISSUE_MAP_CLIENT
   const built = await Bun.build({
     entrypoints: [CLIENT],
     target: 'browser',
@@ -606,9 +631,8 @@ function prerender(html: string, snapshot: Snapshot): string {
 
 /** 把快照塞進樣板。回傳的是 artifact 用的片段（沒有 doctype／html／head／body）。 */
 export async function renderFragment(snapshot: Snapshot): Promise<string> {
-  const template = await Bun.file(TEMPLATE).text()
   const withData = replaceIn(
-    template,
+    TEMPLATE,
     /(<script id="issue-map-data" type="application\/json">)[\s\S]*?(<\/script>)/,
     // JSON 裡把 `<` 一律逃脫成 `\u003c`：那在 JSON 字串裡等價，而且不可能提早關掉 <script>。
     JSON.stringify(snapshot).replaceAll('<', '\\u003c'),
@@ -631,9 +655,14 @@ export async function renderFragment(snapshot: Snapshot): Promise<string> {
  * `lang` 是預設語言；頁面上換語言時畫面那一支會改掉 `documentElement.lang`。
  */
 export async function renderDocument(snapshot: Snapshot): Promise<string> {
+  return documentOf(await renderFragment(snapshot))
+}
+
+/** 把一段 body 包成完整文件。app 在地圖前面多放一條工具列、選 repo 的那一頁也走這裡。 */
+export function documentOf(body: string): string {
   const head =
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-  return `<!doctype html><html lang="en"><head>${head}</head><body>${await renderFragment(snapshot)}</body></html>`
+  return `<!doctype html><html lang="en"><head>${head}</head><body>${body}</body></html>`
 }
 
 /**
@@ -643,7 +672,7 @@ export async function renderDocument(snapshot: Snapshot): Promise<string> {
  * 群組與清單本來就是空字串，拿「沒變」當「樣板壞了」的話，那種 repo 會產不出圖。
  */
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
-  if (!marker.test(html)) throw new Error(`Template is missing the ${what} block: ${TEMPLATE}`)
+  if (!marker.test(html)) throw new Error(`Template is missing the ${what} block: issue-map.html`)
   return html.replace(marker, `$1${body}$2`)
 }
 

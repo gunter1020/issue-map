@@ -38,6 +38,24 @@ skill、讓 agent 照著跑——預設的標籤與指令也是從那裡來的�
 - 在跑不了 script 的地方（嚴格 CSP、某些預覽窗），檔案會退回一份純文字的票清單，而不是一片空白。
 - `@latest` 取 npm 上最新的一版；要釘住就寫 `bunx issue-map@0.2.0`。
 
+## 桌面 app（macOS）
+
+用自己的視窗看，不佔瀏覽器分頁。雙擊開的 app 沒有 cwd 可以推斷 repo，所以在視窗裡選；開過的會列
+出來，下次點一下就好。
+
+```bash
+bun install
+bun run app:build   # dist/app/bun-darwin-<arch>/issue-map.app
+bun run app         # 或不建置，直接從原始碼跑
+```
+
+- 同一張圖、同一個 `gh` 登入。repo 以 `GH_REPO` 交給 `gh`；`ISSUE_MAP_*` 只有從終端機啟動時才吃得
+  到，從 Finder 開用的是預設值。
+- GitHub 連結交給預設瀏覽器開。⌘R 重抓，⌘C 複製。
+- 最近開過的 repo 記在 `~/.config/issue-map/recent.json`。server 聽 `127.0.0.1:47474`，語言選擇
+  才跨得過重開；那個 port 被佔就換一個，那一次的選擇記不住。
+- 這是開發建置——ad-hoc 簽章、沒有公證——給建置它的那台 Mac 用，不在 npm 套件裡。
+
 ## 前置條件
 
 - **Bun**——這幾支用了 `Bun.build`、`Bun.serve`、`Bun.file`，Node 跑不起來。
@@ -99,6 +117,8 @@ CLI 那一側（產檔訊息、錯誤）只有英文。
 | `src/issue-map-page.ts`  | 瀏覽器端程式碼，建置時被打包進 HTML                      |
 | `src/issue-map.html`     | 樣板。兩個佔位區塊會被填入                               |
 | `src/issue-map-serve.ts` | 本機 server，每個請求重抓一次                            |
+| `src/issue-map-open.ts`  | 把網址交給預設瀏覽器（CLI 的 `--open`、app 裡的連結）    |
+| `app/`                   | 桌面 app：視窗、server worker、選 repo、macOS 建置       |
 | `tools/mutate.ts`        | 突變測試：改壞一行看測試會不會紅                         |
 
 ## 在這個 repo 裡開發
