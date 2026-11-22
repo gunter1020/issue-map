@@ -140,8 +140,6 @@ export const EMPTY_SNAPSHOT: Snapshot = {
  * 一張圖畫一群。
  */
 export function groupsOf(issues: readonly MapIssue[]): Group[] {
-  const known = new Set(issues.map((issue) => issue.number))
-  const blocking = new Set(issues.flatMap((issue) => issue.blockedBy))
   const byParent = new Map<number, number[]>()
   for (const issue of issues) {
     if (issue.parent === null) continue
@@ -158,12 +156,13 @@ export function groupsOf(issues: readonly MapIssue[]): Group[] {
   }
 
   const grouped = new Set([...byParent.values()].flat())
+  const ungrouped = issues.filter((issue) => !grouped.has(issue.number) && !issue.isParent)
+  // 只看沒有主票這一池彼此之間的邊：連到別群或主票的單一張票，放進 linked 也畫不出任何線。
+  const inLinked = new Set(edgesWithin(ungrouped).flatMap((edge) => [edge.from, edge.to]))
   const linked: number[] = []
   const alone: number[] = []
-  for (const issue of issues) {
-    if (grouped.has(issue.number) || issue.isParent) continue
-    const hasEdge = blocking.has(issue.number) || issue.blockedBy.some((n) => known.has(n))
-    ;(hasEdge ? linked : alone).push(issue.number)
+  for (const issue of ungrouped) {
+    ;(inLinked.has(issue.number) ? linked : alone).push(issue.number)
   }
   if (linked.length) groups.push({ parent: null, name: { kind: 'linked' }, members: linked })
   if (alone.length) groups.push({ parent: null, name: { kind: 'island' }, members: alone })
@@ -287,16 +286,18 @@ export function layoutOf(members: readonly MapIssue[]): Layout {
   const tracks: number[][] = []
   while (left.size) {
     const tail = [...left].sort((a, b) => deeperFirst(a, b) || a - b)[0] as number
+    // 邊走邊從 left 移除，資料若真的成環才不會同一條鏈繞死在迴圈裡。
+    left.delete(tail)
     const chain = [tail]
     for (let at = tail; ;) {
       const back = predsOf(at)
         .filter((n) => left.has(n))
         .sort(deeperFirst)[0]
       if (back === undefined) break
+      left.delete(back)
       chain.unshift(back)
       at = back
     }
-    for (const n of chain) left.delete(n)
     tracks.push(chain)
   }
 
