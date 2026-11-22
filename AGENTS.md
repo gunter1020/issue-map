@@ -13,4 +13,10 @@
 
 ## 專案契約
 
-所有角色規則與專案事實集中在 `docs/agents/`（領域詞彙與架構決定另外在 `CONTEXT.md` 與 `docs/adr/`），實作、審查、測試與收票前一律先讀對應的檔與節。
+所有角色規則與專案事實集中在 `docs/agents/`，實作、審查、測試與收票前一律先讀對應的檔與節：
+
+- **票務系統**：GitHub Issues 與 `gh` CLI 讀寫／收票規則見 `docs/agents/issue-tracker.md`。
+- **分類與狀態標籤**：類別、triage 狀態與手動接手標籤對照見 `docs/agents/triage-labels.md`。
+- **開發流程**：指令、分支與合併、畫面規範與實機驗收見 `docs/agents/dev-workflow.md`。
+- **測試規範**：測試門檻、突變測試與測試分層見 `docs/agents/testing.md`。
+- **領域文件**：本專案為單一領域邊界，詞彙表與架構決定在根目錄的 `CONTEXT.md` 與 `docs/adr/`，取用方式見 `docs/agents/domain.md`。
