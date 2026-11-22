@@ -120,7 +120,14 @@ export function startServer(options: ServerOptions) {
     }
 
     const match = /^\/r\/([^/]+\/[^/]+)$/.exec(url.pathname)
-    const repo = match?.[1] ? parseRepo(decodeURIComponent(match[1])) : null
+    let repo: string | null = null
+    if (match?.[1]) {
+      try {
+        repo = parseRepo(decodeURIComponent(match[1]))
+      } catch {
+        repo = null
+      }
+    }
     if (!repo) return new Response('Not found', { status: 404 })
     try {
       const drawn = await drawShared(repo)

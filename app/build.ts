@@ -22,35 +22,31 @@ type Target = (typeof TARGETS)[number]
 const NAME = 'issue-map'
 const BUNDLE_ID = 'io.github.gunter1020.issue-map'
 
-const requested = process.argv[2] ?? `bun-darwin-${process.arch}`
-const target = TARGETS.find((candidate) => candidate === requested)
-if (!target) {
-  console.error(`Unsupported target: ${requested} (supported: ${TARGETS.join(', ')})`)
-  process.exit(2)
-}
-
 const root = join(import.meta.dir, '..')
-const webviewDir = dirname(Bun.resolveSync('webview-bun/package.json', root))
 
 /**
  * webview-bun 執行時用 `import('../build/libwebview.dylib')` 找原生函式庫，編譯後那個相對路徑不
  * 存在。把那一段換成內嵌檔案的 import，函式庫就跟著進執行檔。依賴的是它 loader 的寫法，所以對不上
  * 就直接失敗，不要編出一個開不了窗的 app。
  */
+export function patchWebviewLoader(source: string, library: string): string {
+  const start = source.indexOf('let lib_file;')
+  const end = source.indexOf('export const lib = dlopen')
+  if (start < 0 || end < start) {
+    throw new Error('webview-bun changed its native loader; update app/build.ts')
+  }
+  return `${source.slice(0, start)}import embedded from ${JSON.stringify(library)} with { type: 'file' };\nconst lib_file = { default: embedded };\n${source.slice(end)}`
+}
+
 const embedWebview: Bun.BunPlugin = {
   name: 'embed-webview-library',
   setup(builder) {
     builder.onLoad({ filter: /webview-bun[\\/]src[\\/]ffi\.ts$/ }, async ({ path }) => {
-      const source = await readFile(path, 'utf8')
-      const start = source.indexOf('let lib_file;')
-      const end = source.indexOf('export const lib = dlopen')
-      if (start < 0 || end < start) {
-        throw new Error('webview-bun changed its native loader; update app/build.ts')
-      }
+      const webviewDir = dirname(Bun.resolveSync('webview-bun/package.json', root))
       const library = join(webviewDir, 'build/libwebview.dylib')
       return {
         loader: 'ts',
-        contents: `${source.slice(0, start)}import embedded from ${JSON.stringify(library)} with { type: 'file' };\nconst lib_file = { default: embedded };\n${source.slice(end)}`,
+        contents: patchWebviewLoader(await readFile(path, 'utf8'), library),
       }
     })
   },
@@ -108,4 +104,12 @@ async function buildApp(arch: Target): Promise<string> {
   return bundle
 }
 
-console.log(`Built ${await buildApp(target)} (development build, ad-hoc signed)`)
+if (import.meta.main) {
+  const requested = process.argv[2] ?? `bun-darwin-${process.arch}`
+  const target = TARGETS.find((candidate) => candidate === requested)
+  if (!target) {
+    console.error(`Unsupported target: ${requested} (supported: ${TARGETS.join(', ')})`)
+    process.exit(2)
+  }
+  console.log(`Built ${await buildApp(target)} (development build, ad-hoc signed)`)
+}
