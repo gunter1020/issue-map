@@ -24,7 +24,12 @@ import { openInBrowser } from './issue-map-open.ts'
 
 // `PORT` 是 Claude 桌面 app 的 launch.json 在 autoPort 換 port 時塞進來的。都沒設就是 0：
 // 由 OS 指派，`server.port` 才是真的在聽的那個。
-const PORT = Number(process.env.ISSUE_MAP_PORT ?? process.env.PORT ?? 0)
+const rawPort = process.env.ISSUE_MAP_PORT ?? process.env.PORT
+const PORT = rawPort === undefined || rawPort === '' ? 0 : Number(rawPort)
+if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65_535) {
+  console.error(`Invalid port: ${rawPort} (must be an integer 0–65535)`)
+  process.exit(2)
+}
 
 // 開瀏覽器要明講 `--open`。預設不開：`--watch`、CI、遠端 session 都是每重啟一次就多一個分頁，
 // 而網址本來就印在啟動訊息裡。打錯的旗標直接失敗，不然「沒開分頁」看不出是預設還是打錯。
