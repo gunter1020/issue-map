@@ -96,6 +96,13 @@ describe('線路圖排版', () => {
       expect(point.x + overhang).toBeLessThanOrEqual(layout.width)
     }
   })
+
+  /** 守的是「blockedBy 成環時不會無限迴圈」：資料不該有環，真的有也要在這裡止血。 */
+  test('blockedBy 成環時仍能完成排版', () => {
+    const layout = layoutOf([issue(1, [2]), issue(2, [1])])
+    expect(layout.xy.has(1)).toBe(true)
+    expect(layout.xy.has(2)).toBe(true)
+  })
 })
 
 describe('月台的形狀', () => {

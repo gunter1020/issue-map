@@ -19,12 +19,14 @@ const NAME = /^[A-Za-z0-9._-]{1,100}$/
  * git remote 的 https／ssh 網址。認不出來就回 `null`。
  */
 export function parseRepo(input: string): string | null {
-  const path = input
-    .trim()
+  const trimmed = input.trim()
+  const isHttp = /^(?:https?:\/\/)?(?:www\.)?github\.com\//i.test(trimmed)
+  const path = trimmed
     .replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, '')
     .replace(/^ssh:\/\/git@github\.com(?::\d+)?\//i, '')
     .replace(/^git@github\.com:/i, '')
-  const [owner, rawName] = path.split('/')
+  const cleanPath = isHttp ? path.replace(/[?#].*$/, '') : path
+  const [owner, rawName] = cleanPath.split('/')
   const name = rawName?.replace(/\.git$/i, '')
   if (!owner || !name || !OWNER.test(owner) || !NAME.test(name)) return null
   if (name === '.' || name === '..') return null

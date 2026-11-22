@@ -5,6 +5,7 @@ import {
   keptClosed,
   parentInBody,
   type RawIssue,
+  renderFragment,
   wantedClosed,
   withParent,
 } from '../src/issue-map.ts'
@@ -207,5 +208,27 @@ describe('折成快照', () => {
     expect(assemble('owner/repo', open, closed).issues.map((issue) => issue.number)).toEqual([
       1, 3, 5,
     ])
+  })
+})
+
+describe('寫進樣板', () => {
+  /**
+   * 守的是「標題裡的 `$` 取代模式（`$1`、`$&`、`$$`）不會在填入樣板時被展開」。
+   *
+   * 壞了會怎樣：`$1` 會把開頭標籤再次塞進內容，不只預渲染 HTML 破掉，連內嵌的 JSON 也會變成
+   * 不合法格式，整頁 JS 啟動就崩潰。
+   */
+  test('標題含 $100、$&、$$ 時內嵌 JSON 與預渲染 HTML 都保持原樣', async () => {
+    const title = 'Fix $100 bug, $& and $$'
+    const snapshot = assemble('owner/repo', [withParent(raw(1, { title }))], [])
+    const html = await renderFragment(snapshot)
+
+    const match = /<script id="issue-map-data" type="application\/json">([\s\S]*?)<\/script>/.exec(
+      html,
+    )
+    expect(match?.[1]).toBeDefined()
+    const parsed = JSON.parse(match![1]!) as { issues: { title: string }[] }
+    expect(parsed.issues[0]?.title).toBe(title)
+    expect(html).toContain('<span class="title">Fix $100 bug, $&amp; and $$</span>')
   })
 })

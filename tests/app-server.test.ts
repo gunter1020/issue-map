@@ -67,6 +67,7 @@ describe('路由', () => {
   test('不是 repo 的路徑就 404', async () => {
     const { url } = await start(fakeMap)
     expect((await fetch(`${url}r/a`)).status).toBe(404)
+    expect((await fetch(`${url}r/%E0/b`)).status).toBe(404)
     expect((await fetch(`${url}favicon.ico`)).status).toBe(404)
   })
 })

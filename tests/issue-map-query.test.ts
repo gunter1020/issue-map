@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { aliasedQuery, chunks, collect, type Page } from '../src/issue-map.ts'
+import { aliasedQuery, chunks, collect, mapLimit, type Page } from '../src/issue-map.ts'
 
 /**
  * 查詢怎麼組、分頁怎麼翻。
@@ -107,5 +107,22 @@ describe('翻頁', () => {
 
     expect(all).toEqual([9])
     expect(seen).toEqual(['from-here'])
+  })
+})
+
+describe('併發上限', () => {
+  test('同時執行數不超過上限，而且照原順序回傳', async () => {
+    let active = 0
+    let peak = 0
+    const out = await mapLimit([1, 2, 3, 4, 5, 6, 7], 2, async (item) => {
+      active += 1
+      peak = Math.max(peak, active)
+      await Bun.sleep(item % 2 === 0 ? 5 : 15)
+      active -= 1
+      return item * 10
+    })
+
+    expect(peak).toBeLessThanOrEqual(2)
+    expect(out).toEqual([10, 20, 30, 40, 50, 60, 70])
   })
 })

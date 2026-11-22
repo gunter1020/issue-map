@@ -28,89 +28,31 @@ function readSnapshot(): Snapshot {
   return { ...EMPTY_SNAPSHOT, ...parsed }
 }
 
-const snapshot = readSnapshot()
-const view = viewOf(snapshot)
-const repo = snapshot.repo
-
-const detail = pick('detail')
-const rowsEl = pick('rows')
-const groupsEl = pick('groups')
-const tabsEl = pick('tabs')
-
-let selected: number | null = null
-let filter: Filter = 'all'
-
-// ---- 偏好 ----
-
 /**
  * 偏好記在瀏覽器。**讀不到、寫不進都不是錯誤**：無痕視窗與擋掉儲存的設定裡 `localStorage` 會
  * 直接丟例外，那時偏好只在這一次有效，畫面照樣是完整的——所以存取一律收在這兩支裡。
  */
-function readStored(key: string): string | null {
+export function readStored(
+  key: string,
+  storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage,
+): string | null {
   try {
-    return localStorage.getItem(key)
+    return storage?.getItem(key) ?? null
   } catch {
     return null
   }
 }
 
-function writeStored(key: string, value: string): void {
+export function writeStored(
+  key: string,
+  value: string,
+  storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage,
+): void {
   try {
-    localStorage.setItem(key, value)
+    storage?.setItem(key, value)
   } catch {
     // 存不了就只在這一次有效。
   }
-}
-
-// ---- 語言 ----
-
-/**
- * 語言記在瀏覽器、而且不分 repo——同一個人看好幾個 repo 的地圖，語言是他的偏好，不是某個專案
- * 的設定。讀不到（無痕、封鎖）或存的是舊值就用預設的英文。
- *
- * 刻意不看 `navigator.language`：這一頁的預設語言是英文，猜錯了反而要每次進來都改回去。
- */
-const LOCALE_KEY = 'issue-map:locale'
-
-function readLocale(): Locale {
-  const saved = readStored(LOCALE_KEY)
-  return isLocale(saved) ? saved : DEFAULT_LOCALE
-}
-
-/** 語言選單只做一次；換語言是整頁重畫，選單自己不重建，不然焦點會掉。 */
-function mountLangPicker(): void {
-  const picker = pick('lang')
-  if (!(picker instanceof HTMLSelectElement)) throw new Error('#lang 不是 select')
-  picker.innerHTML = langOptionsHTML()
-  picker.value = locale()
-  picker.addEventListener('change', () => {
-    if (!isLocale(picker.value)) return
-    setLocale(picker.value)
-    writeStored(LOCALE_KEY, picker.value)
-    render()
-  })
-}
-
-// ---- 收合狀態 ----
-
-/**
- * 收合狀態只有一份，地圖與清單都讀它、都能改它。每個瀏覽器記自己的；讀不到（無痕、封鎖）
- * 就當成全部展開。
- */
-const COLLAPSE_KEY = `issue-map:collapsed:${repo}`
-
-function readFolded(): Set<string> {
-  try {
-    return new Set(JSON.parse(readStored(COLLAPSE_KEY) || '[]') as string[])
-  } catch {
-    return new Set()
-  }
-}
-
-const folded = readFolded()
-
-function isFolded(parent: number): boolean {
-  return folded.has(String(parent))
 }
 
 /**
@@ -119,126 +61,66 @@ function isFolded(parent: number): boolean {
  * 看的是**整條祖先鏈**，不只直屬主票——三層的鏈收起最上面那張時，第三層的 `data-parent` 指的
  * 是第二層，只比對直屬的話它會單獨留在畫面上。
  */
-function foldedAnywhere(parent: number): boolean {
+export function hasFoldedAncestor(
+  parent: number,
+  isFoldedFn: (n: number) => boolean,
+  parentOf: (n: number) => number | null,
+): boolean {
   const seen = new Set<number>()
   for (let at: number | null = parent; at !== null && !seen.has(at);) {
-    if (isFolded(at)) return true
+    if (isFoldedFn(at)) return true
     seen.add(at)
-    at = view.issueAt(at)?.parent ?? null
+    at = parentOf(at)
   }
   return false
 }
 
-function setFolded(parent: number, shut: boolean): void {
-  if (shut) folded.add(String(parent))
-  else folded.delete(String(parent))
-  writeStored(COLLAPSE_KEY, JSON.stringify([...folded]))
-  paintFolded()
+export type CopyButton = {
+  readonly dataset: Record<string, string | undefined>
+  querySelector(selectors: string): { textContent: string | null } | null
 }
 
-/**
- * 收合只在這裡畫一次：列、就地展開的細節、地圖本體，凡是掛了 data-parent 的都聽它。收合鈕的
- * 樣子也在這裡補上——建置時畫出來的鈕是空的，因為那時還不知道這個瀏覽器記了什麼。
- */
-function paintFolded(): void {
-  for (const node of document.querySelectorAll<HTMLElement>('[data-parent]')) {
-    node.hidden = foldedAnywhere(Number(node.dataset.parent))
-  }
-  for (const section of document.querySelectorAll<HTMLElement>('section.group[data-fold]')) {
-    section.dataset.folded = String(isFolded(Number(section.dataset.fold)))
-  }
-  for (const button of document.querySelectorAll<HTMLElement>('.fold[data-fold-for]')) {
-    const parent = Number(button.dataset.foldFor)
-    const open = !isFolded(parent)
-    button.setAttribute('aria-expanded', String(open))
-    button.setAttribute(
-      'aria-label',
-      open ? t('fold.collapse', { n: parent }) : t('fold.expand', { n: parent }),
-    )
-    button.textContent = open ? '−' : '+'
-  }
+const copyTimers = new WeakMap<
+  CopyButton,
+  { timer: ReturnType<typeof setTimeout>; original: string }
+>()
+
+function showCopyFeedback(
+  button: CopyButton,
+  label: { textContent: string | null },
+  original: string,
+  text: string,
+  ms: number,
+  copied: boolean,
+): void {
+  const prev = copyTimers.get(button)
+  if (prev) clearTimeout(prev.timer)
+  if (copied) button.dataset.copied = 'true'
+  else delete button.dataset.copied
+  label.textContent = text
+  const timer = setTimeout(() => {
+    copyTimers.delete(button)
+    delete button.dataset.copied
+    label.textContent = original
+  }, ms)
+  copyTimers.set(button, { timer, original })
 }
 
-// ---- 選取 ----
-
-/**
- * 選一張票。再點同一張不會取消——在清單上你往往只是想再看一次，取消掉反而要重新找。要清掉
- * 按 Esc。
- */
-function select(number: number): void {
-  selected = number
-  paintSelection()
-}
-
-function clearSelection(): void {
-  selected = null
-  closeExpander()
-  paintSelection()
-}
-
-function paintSelection(): void {
-  const lit = selected === null ? null : view.chainOf(selected)
-  for (const svg of document.querySelectorAll<SVGSVGElement>('svg')) {
-    svg.classList.toggle('has-selection', selected !== null)
-    for (const node of svg.querySelectorAll<SVGElement>('.node')) {
-      const number = Number(node.dataset.number)
-      node.classList.toggle('lit', lit !== null && lit.has(number))
-      node.classList.toggle('selected', number === selected)
-    }
-    for (const edge of svg.querySelectorAll<SVGElement>('.edge')) {
-      const from = Number(edge.dataset.from)
-      const to = Number(edge.dataset.to)
-      edge.classList.toggle('lit', lit !== null && lit.has(from) && lit.has(to))
-    }
-  }
-  for (const row of rowsEl.querySelectorAll<HTMLElement>('.row[data-number]')) {
-    row.classList.toggle('selected', Number(row.dataset.number) === selected)
-  }
-  renderDetail(selected ?? view.defaultPick())
-}
-
-function renderDetail(number: number | undefined): void {
-  const panel = view.detailPanelHTML(number)
-  detail.dataset.status = panel.status
-  detail.innerHTML = panel.html
-}
-
-// ---- 就地展開 ----
-
-/**
- * 清單的細節就在被點的那一列底下展開，不把畫面捲到上面的面板——連著看三張票時，視線不用
- * 來回跑。
- */
-function closeExpander(): void {
-  rowsEl.querySelector('.detail.expand')?.remove()
-}
-
-function openExpander(row: HTMLElement, number: number): void {
-  closeExpander()
-  const issue = view.issueAt(number)
-  if (!issue) return
-  const panel = document.createElement('div')
-  panel.className = 'detail expand'
-  panel.dataset.status = issue.status
-  panel.dataset.forNumber = String(number)
-  // 掛上 data-parent，主票收起來時 paintFolded 會一起把它藏掉。
-  if (row.dataset.parent) panel.dataset.parent = row.dataset.parent
-  panel.innerHTML = view.detailHTML(number)
-  row.insertAdjacentElement('afterend', panel)
-  paintFolded()
-}
-
-function pickRow(row: HTMLElement): void {
-  const number = Number(row.dataset.number)
-  const already = rowsEl.querySelector(`.detail.expand[data-for-number="${number}"]`)
-  // 上面的面板換一張票會改變自己的高度，把清單整段推走。先記下這一列在畫面上的位置，改完
-  // 再補回去，手指底下的那一列就不會跑。
-  const before = row.getBoundingClientRect().top
-  select(number)
-  if (already) closeExpander()
-  else openExpander(row, number)
-  const shift = row.getBoundingClientRect().top - before
-  if (shift) window.scrollBy({ top: shift, behavior: 'instant' })
+export function handleCopy(
+  button: CopyButton,
+  copyFn: (text: string) => Promise<void> = copyText,
+): Promise<void> {
+  const label = button.querySelector('.copy-text')
+  const command = button.dataset.copy
+  if (!label || !command) return Promise.resolve()
+  const prev = copyTimers.get(button)
+  if (prev) clearTimeout(prev.timer)
+  // 連點兩次時畫面上已經是回饋字，要保留第一次記下的原始文字才不會卡在「已複製」。
+  const original = prev?.original ?? label.textContent ?? ''
+  return copyFn(command).then(
+    () => showCopyFeedback(button, label, original, t('copy.done'), 1200, true),
+    () => showCopyFeedback(button, label, original, t('copy.fail'), 1600, false),
+  )
 }
 
 // ---- 複製 ----
@@ -264,149 +146,313 @@ function copyText(text: string): Promise<void> {
   return navigator.clipboard.writeText(text).catch(() => legacyCopy(text))
 }
 
-function flash(label: HTMLElement, text: string, ms: number, then: () => void): void {
-  label.textContent = text
-  setTimeout(then, ms)
-}
+function mountPage(): void {
+  const snapshot = readSnapshot()
+  const view = viewOf(snapshot)
+  const repo = snapshot.repo
 
-function handleCopy(button: HTMLElement): void {
-  const label = button.querySelector<HTMLElement>('.copy-text')
-  const command = button.dataset.copy
-  if (!label || !command) return
-  const was = label.textContent ?? ''
-  copyText(command).then(
-    () => {
-      button.dataset.copied = 'true'
-      flash(label, t('copy.done'), 1200, () => {
-        delete button.dataset.copied
-        label.textContent = was
-      })
-    },
-    () => flash(label, t('copy.fail'), 1600, () => (label.textContent = was)),
-  )
-}
+  const detail = pick('detail')
+  const rowsEl = pick('rows')
+  const groupsEl = pick('groups')
+  const tabsEl = pick('tabs')
 
-// ---- 事件 ----
+  let selected: number | null = null
+  let filter: Filter = 'all'
 
-function elementAt(ev: Event): Element | null {
-  return ev.target instanceof Element ? ev.target : null
-}
+  // ---- 語言 ----
 
-// 全部走委派：標記是建置時畫好的，重畫也只是換 innerHTML，沒有可以逐一掛監聽的時機。
-document.addEventListener('click', (ev) => {
-  const target = elementAt(ev)
-  if (!target) return
+  /**
+   * 語言記在瀏覽器、而且不分 repo——同一個人看好幾個 repo 的地圖，語言是他的偏好，不是某個專案
+   * 的設定。讀不到（無痕、封鎖）或存的是舊值就用預設的英文。
+   *
+   * 刻意不看 `navigator.language`：這一頁的預設語言是英文，猜錯了反而要每次進來都改回去。
+   */
+  const LOCALE_KEY = 'issue-map:locale'
 
-  const fold = target.closest<HTMLElement>('.fold[data-fold-for]')
-  if (fold) {
-    const parent = Number(fold.dataset.foldFor)
-    setFolded(parent, !isFolded(parent))
-    return
+  function readLocale(): Locale {
+    const saved = readStored(LOCALE_KEY)
+    return isLocale(saved) ? saved : DEFAULT_LOCALE
   }
 
-  const copy = target.closest<HTMLElement>('.copy')
-  if (copy) {
-    // 複製是自己一件事，不要順手把那一列也選起來。
-    ev.stopPropagation()
-    handleCopy(copy)
-    return
+  /** 語言選單只做一次；換語言是整頁重畫，選單自己不重建，不然焦點會掉。 */
+  function mountLangPicker(): void {
+    const picker = pick('lang')
+    if (!(picker instanceof HTMLSelectElement)) throw new Error('#lang 不是 select')
+    picker.innerHTML = langOptionsHTML()
+    picker.value = locale()
+    picker.addEventListener('change', () => {
+      if (!isLocale(picker.value)) return
+      setLocale(picker.value)
+      writeStored(LOCALE_KEY, picker.value)
+      render()
+    })
   }
 
-  const tab = target.closest<HTMLElement>('.tab[data-filter]')
-  if (tab) {
-    filter = (tab.dataset.filter ?? 'all') as Filter
-    renderRows()
+  // ---- 收合狀態 ----
+
+  /**
+   * 收合狀態只有一份，地圖與清單都讀它、都能改它。每個瀏覽器記自己的；讀不到（無痕、封鎖）
+   * 就當成全部展開。
+   */
+  const COLLAPSE_KEY = `issue-map:collapsed:${repo}`
+
+  function readFolded(): Set<string> {
+    try {
+      return new Set(JSON.parse(readStored(COLLAPSE_KEY) || '[]') as string[])
+    } catch {
+      return new Set()
+    }
+  }
+
+  const folded = readFolded()
+
+  function isFolded(parent: number): boolean {
+    return folded.has(String(parent))
+  }
+
+  function foldedAnywhere(parent: number): boolean {
+    return hasFoldedAncestor(parent, isFolded, (n) => view.issueAt(n)?.parent ?? null)
+  }
+
+  function setFolded(parent: number, shut: boolean): void {
+    if (shut) folded.add(String(parent))
+    else folded.delete(String(parent))
+    writeStored(COLLAPSE_KEY, JSON.stringify([...folded]))
+    paintFolded()
+  }
+
+  /**
+   * 收合只在這裡畫一次：列、就地展開的細節、地圖本體，凡是掛了 data-parent 的都聽它。收合鈕的
+   * 樣子也在這裡補上——建置時畫出來的鈕是空的，因為那時還不知道這個瀏覽器記了什麼。
+   */
+  function paintFolded(): void {
+    for (const node of document.querySelectorAll<HTMLElement>('[data-parent]')) {
+      node.hidden = foldedAnywhere(Number(node.dataset.parent))
+    }
+    for (const section of document.querySelectorAll<HTMLElement>('section.group[data-fold]')) {
+      section.dataset.folded = String(isFolded(Number(section.dataset.fold)))
+    }
+    for (const button of document.querySelectorAll<HTMLElement>('.fold[data-fold-for]')) {
+      const parent = Number(button.dataset.foldFor)
+      const open = !isFolded(parent)
+      button.setAttribute('aria-expanded', String(open))
+      button.setAttribute(
+        'aria-label',
+        open ? t('fold.collapse', { n: parent }) : t('fold.expand', { n: parent }),
+      )
+      button.textContent = open ? '−' : '+'
+    }
+  }
+
+  // ---- 選取 ----
+
+  /**
+   * 選一張票。再點同一張不會取消——在清單上你往往只是想再看一次，取消掉反而要重新找。要清掉
+   * 按 Esc。
+   */
+  function select(number: number): void {
+    selected = number
     paintSelection()
-    const back =
-      selected === null
-        ? null
-        : rowsEl.querySelector<HTMLElement>(`.row[data-number="${selected}"]`)
-    if (back && selected !== null) openExpander(back, selected)
-    return
   }
 
-  // 點站看詳細；要開 GitHub 用 ⌘／Ctrl 點，或詳細面板裡的連結。
-  const node = target.closest<HTMLElement>('.node[data-number]')
-  if (node) {
-    if (ev.metaKey || ev.ctrlKey || ev.shiftKey) return
+  function clearSelection(): void {
+    selected = null
+    closeExpander()
+    paintSelection()
+  }
+
+  function paintSelection(): void {
+    const lit = selected === null ? null : view.chainOf(selected)
+    for (const svg of document.querySelectorAll<SVGSVGElement>('svg')) {
+      svg.classList.toggle('has-selection', selected !== null)
+      for (const node of svg.querySelectorAll<SVGElement>('.node')) {
+        const number = Number(node.dataset.number)
+        node.classList.toggle('lit', lit !== null && lit.has(number))
+        node.classList.toggle('selected', number === selected)
+      }
+      for (const edge of svg.querySelectorAll<SVGElement>('.edge')) {
+        const from = Number(edge.dataset.from)
+        const to = Number(edge.dataset.to)
+        edge.classList.toggle('lit', lit !== null && lit.has(from) && lit.has(to))
+      }
+    }
+    for (const row of rowsEl.querySelectorAll<HTMLElement>('.row[data-number]')) {
+      row.classList.toggle('selected', Number(row.dataset.number) === selected)
+    }
+    renderDetail(selected ?? view.defaultPick())
+  }
+
+  function renderDetail(number: number | undefined): void {
+    const panel = view.detailPanelHTML(number)
+    detail.dataset.status = panel.status
+    detail.innerHTML = panel.html
+  }
+
+  // ---- 就地展開 ----
+
+  /**
+   * 清單的細節就在被點的那一列底下展開，不把畫面捲到上面的面板——連著看三張票時，視線不用
+   * 來回跑。
+   */
+  function closeExpander(): void {
+    rowsEl.querySelector('.detail.expand')?.remove()
+  }
+
+  function openExpander(row: HTMLElement, number: number): void {
+    closeExpander()
+    const issue = view.issueAt(number)
+    if (!issue) return
+    const panel = document.createElement('div')
+    panel.className = 'detail expand'
+    panel.dataset.status = issue.status
+    panel.dataset.forNumber = String(number)
+    // 掛上 data-parent，主票收起來時 paintFolded 會一起把它藏掉。
+    if (row.dataset.parent) panel.dataset.parent = row.dataset.parent
+    panel.innerHTML = view.detailHTML(number)
+    row.insertAdjacentElement('afterend', panel)
+    paintFolded()
+  }
+
+  function pickRow(row: HTMLElement): void {
+    const number = Number(row.dataset.number)
+    const already = rowsEl.querySelector(`.detail.expand[data-for-number="${number}"]`)
+    // 上面的面板換一張票會改變自己的高度，把清單整段推走。先記下這一列在畫面上的位置，改完
+    // 再補回去，手指底下的那一列就不會跑。
+    const before = row.getBoundingClientRect().top
+    select(number)
+    if (already) closeExpander()
+    else openExpander(row, number)
+    const shift = row.getBoundingClientRect().top - before
+    if (shift) window.scrollBy({ top: shift, behavior: 'instant' })
+  }
+
+  // ---- 事件 ----
+
+  function elementAt(ev: Event): Element | null {
+    return ev.target instanceof Element ? ev.target : null
+  }
+
+  // 全部走委派：標記是建置時畫好的，重畫也只是換 innerHTML，沒有可以逐一掛監聽的時機。
+  document.addEventListener('click', (ev) => {
+    const target = elementAt(ev)
+    if (!target) return
+
+    const fold = target.closest<HTMLElement>('.fold[data-fold-for]')
+    if (fold) {
+      const parent = Number(fold.dataset.foldFor)
+      setFolded(parent, !isFolded(parent))
+      return
+    }
+
+    const copy = target.closest<HTMLElement>('.copy')
+    if (copy) {
+      // 複製是自己一件事，不要順手把那一列也選起來。
+      ev.stopPropagation()
+      void handleCopy(copy)
+      return
+    }
+
+    const tab = target.closest<HTMLElement>('.tab[data-filter]')
+    if (tab) {
+      const expanded =
+        selected !== null &&
+        rowsEl.querySelector(`.detail.expand[data-for-number="${selected}"]`) !== null
+      filter = (tab.dataset.filter ?? 'all') as Filter
+      renderRows()
+      paintSelection()
+      const back =
+        expanded && selected !== null
+          ? rowsEl.querySelector<HTMLElement>(`.row[data-number="${selected}"]`)
+          : null
+      if (back && selected !== null) openExpander(back, selected)
+      return
+    }
+
+    // 點站看詳細；要開 GitHub 用 ⌘／Ctrl 點，或詳細面板裡的連結。
+    const node = target.closest<HTMLElement>('.node[data-number]')
+    if (node) {
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey) return
+      ev.preventDefault()
+      const number = Number(node.dataset.number)
+      // 再點同一站就取消，跟點空白處一樣——不然亮起來之後只剩 Esc 能收，那沒人找得到。
+      if (selected === number) clearSelection()
+      else select(number)
+      return
+    }
+
+    // 點圖上的空白處就取消亮線。
+    if (target.closest('.map-wrap')) {
+      clearSelection()
+      return
+    }
+
+    if (target.closest('a')) return
+    const row = target.closest<HTMLElement>('.row[data-number]')
+    if (row) pickRow(row)
+  })
+
+  rowsEl.addEventListener('keydown', (ev) => {
+    const target = elementAt(ev)
+    const row = target?.closest<HTMLElement>('.row[data-number]')
+    if (!row) return
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault()
+      pickRow(row)
+      return
+    }
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return
     ev.preventDefault()
-    const number = Number(node.dataset.number)
-    // 再點同一站就取消，跟點空白處一樣——不然亮起來之後只剩 Esc 能收，那沒人找得到。
-    if (selected === number) clearSelection()
-    else select(number)
-    return
+    const rows = [...rowsEl.querySelectorAll<HTMLElement>('.row[data-number]:not([hidden])')]
+    const next = rows[rows.indexOf(row) + (ev.key === 'ArrowDown' ? 1 : -1)]
+    next?.focus()
+  })
+
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') clearSelection()
+  })
+
+  // ---- 重畫 ----
+
+  function renderRows(): void {
+    const rows = view.rowsHTML(filter)
+    pick('list-title').textContent = t('list.title')
+    pick('list-sub').textContent = t('list.count', { n: rows.shown })
+    rowsEl.innerHTML = rows.html
+    tabsEl.innerHTML = view.tabsHTML(filter)
+    paintFolded()
   }
 
-  // 點圖上的空白處就取消亮線。
-  if (target.closest('.map-wrap')) {
-    clearSelection()
-    return
+  /**
+   * 整頁重畫。換語言就是走這裡——每一段都會先清掉自己那一塊，所以重畫一次不會留下上一種語言的
+   * 殘骸。選取與收合是狀態不是文字，重畫時保留。
+   */
+  function render(): void {
+    const heading = view.title()
+    pick('page-title').textContent = heading
+    document.title = heading
+    document.documentElement.lang = locale()
+    pick('lang').setAttribute('aria-label', t('lang.label'))
+    pick('eyebrow').textContent = view.eyebrow()
+    pick('lede').innerHTML = view.lede()
+    pick('stats').innerHTML = view.statsHTML()
+
+    // 三段都是逃脫過的 HTML，跟建置時填進樣板的是同一批字串——用 textContent 塞會把逃脫顯示出來。
+    const foot = view.footerHTML()
+    pick('foot-truth').innerHTML = foot.truth
+    pick('foot-refresh').innerHTML = foot.refresh
+    pick('foot-config').innerHTML = foot.config
+
+    groupsEl.innerHTML = view.groupsHTML()
+    pick('branches').innerHTML = view.branchesHTML()
+    tabsEl.setAttribute('aria-label', t('tabs.aria'))
+    renderRows()
+    // paintSelection 收尾會畫詳細，沒有選取時它自己退回預設那一張。
+    paintSelection()
   }
 
-  if (target.closest('a')) return
-  const row = target.closest<HTMLElement>('.row[data-number]')
-  if (row) pickRow(row)
-})
-
-rowsEl.addEventListener('keydown', (ev) => {
-  const target = elementAt(ev)
-  const row = target?.closest<HTMLElement>('.row[data-number]')
-  if (!row) return
-  if (ev.key === 'Enter' || ev.key === ' ') {
-    ev.preventDefault()
-    pickRow(row)
-    return
-  }
-  if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return
-  ev.preventDefault()
-  const rows = [...rowsEl.querySelectorAll<HTMLElement>('.row[data-number]:not([hidden])')]
-  const next = rows[rows.indexOf(row) + (ev.key === 'ArrowDown' ? 1 : -1)]
-  next?.focus()
-})
-
-document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') clearSelection()
-})
-
-// ---- 重畫 ----
-
-function renderRows(): void {
-  const rows = view.rowsHTML(filter)
-  pick('list-title').textContent = t('list.title')
-  pick('list-sub').textContent = t('list.count', { n: rows.shown })
-  rowsEl.innerHTML = rows.html
-  tabsEl.innerHTML = view.tabsHTML(filter)
-  paintFolded()
+  setLocale(readLocale())
+  mountLangPicker()
+  render()
 }
 
-/**
- * 整頁重畫。換語言就是走這裡——每一段都會先清掉自己那一塊，所以重畫一次不會留下上一種語言的
- * 殘骸。選取與收合是狀態不是文字，重畫時保留。
- */
-function render(): void {
-  const heading = view.title()
-  pick('page-title').textContent = heading
-  document.title = heading
-  document.documentElement.lang = locale()
-  pick('lang').setAttribute('aria-label', t('lang.label'))
-  pick('eyebrow').textContent = view.eyebrow()
-  pick('lede').innerHTML = view.lede()
-  pick('stats').innerHTML = view.statsHTML()
-
-  // 三段都是逃脫過的 HTML，跟建置時填進樣板的是同一批字串——用 textContent 塞會把逃脫顯示出來。
-  const foot = view.footerHTML()
-  pick('foot-truth').innerHTML = foot.truth
-  pick('foot-refresh').innerHTML = foot.refresh
-  pick('foot-config').innerHTML = foot.config
-
-  groupsEl.innerHTML = view.groupsHTML()
-  pick('branches').innerHTML = view.branchesHTML()
-  tabsEl.setAttribute('aria-label', t('tabs.aria'))
-  renderRows()
-  // paintSelection 收尾會畫詳細，沒有選取時它自己退回預設那一張。
-  paintSelection()
-}
-
-setLocale(readLocale())
-mountLangPicker()
-render()
+if (typeof document !== 'undefined') mountPage()

@@ -41,6 +41,8 @@ const OUTPUT = process.argv[2] ?? 'dist/issue-map.html'
 const PAGE = 100
 /** 一次用 alias 指名幾張票。GraphQL 對單一查詢的節點數有上限，這個量級離它還很遠。 */
 const BATCH = 50
+/** 同時最多開幾個 `gh` 子行程，避免引用大量已關票時打到 GitHub secondary rate limit。 */
+const CONCURRENT_GH = 6
 
 function labelList(raw: string | undefined, fallback: string): readonly string[] {
   return (raw ?? fallback)
@@ -114,7 +116,7 @@ const ISSUE_FIELDS = `
   parent { number }
   labels(first: 20) { nodes { name } }
   assignees(first: 10) { nodes { login } }
-  blockedBy(first: 50) { nodes { number } }
+  blockedBy(first: 100) { nodes { number } }
 `
 
 type GraphQLError = { readonly type?: string; readonly message?: string }
@@ -258,6 +260,26 @@ export function aliasedQuery(batch: readonly number[], selection: string): strin
   }`
 }
 
+/** 限制同時執行的非同步任務數量，並照原本順序回傳結果。 */
+export async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = []
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next
+      next += 1
+      const item = items[index]
+      if (item !== undefined) results[index] = await fn(item, index)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
 async function byAlias<T>(
   gh: Gh,
   numbers: readonly number[],
@@ -265,8 +287,10 @@ async function byAlias<T>(
 ): Promise<Map<number, T>> {
   type Result = { repository: Record<string, T | null> }
   const batches = chunks(numbers, BATCH)
-  const answers = await Promise.all(
-    batches.map(async (batch) => (await gh<Result>(aliasedQuery(batch, selection))).repository),
+  const answers = await mapLimit(
+    batches,
+    CONCURRENT_GH,
+    async (batch) => (await gh<Result>(aliasedQuery(batch, selection))).repository,
   )
   const found = new Map<number, T>()
   batches.forEach((batch, index) => {
@@ -313,7 +337,7 @@ function childrenQuery(parent: number): string {
  * 代價）。
  */
 async function fetchChildren(gh: Gh, parents: readonly number[]): Promise<ChildState[]> {
-  type More = { repository: { issue: { subIssues: Page<ChildState> } | null } }
+  type More = { repository: { issue: { subIssues: Page<ChildState> } | null } | null }
   const first = await byAlias<{ subIssues: Page<ChildState> }>(
     gh,
     parents,
@@ -330,7 +354,7 @@ async function fetchChildren(gh: Gh, parents: readonly number[]): Promise<ChildS
     rest.push(
       collect<ChildState>(
         async (after) =>
-          (await gh<More>(childrenQuery(parent), after ? { after } : {})).repository.issue
+          (await gh<More>(childrenQuery(parent), after ? { after } : {})).repository?.issue
             ?.subIssues ?? null,
         endCursor,
       ),
@@ -692,7 +716,8 @@ export function documentOf(body: string): string {
  */
 function replaceIn(html: string, marker: RegExp, body: string, what: string): string {
   if (!marker.test(html)) throw new Error(`Template is missing the ${what} block: issue-map.html`)
-  return html.replace(marker, `$1${body}$2`)
+  // 必須用函式回呼：取代字串裡若出現 `$&`、`$1`、`$$`（例如票題含 `$100`），字串樣板會誤觸發取代語法。
+  return html.replace(marker, (_, open: string, close: string) => `${open}${body}${close}`)
 }
 
 export function describe(snapshot: Snapshot): string {

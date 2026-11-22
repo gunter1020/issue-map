@@ -73,6 +73,23 @@ describe('分群', () => {
     expect(elsewhere).not.toContain(100)
     expect(family?.members).not.toContain(100)
   })
+
+  /**
+   * 守的是「只跟主票或別群有關係的單一票，不進 linked」。
+   *
+   * 壞了會怎樣：#5 在無主票那一池裡沒有任何線可畫，歸進 linked 會出現副標說「由前置串起來」但
+   * 圖上只有一個孤立點的矛盾。
+   */
+  test('只被主票或別群子票指到、池內沒有邊的票歸進獨立票', () => {
+    const groups = groupsOf([
+      issue(10, { isParent: true, blockedBy: [5] }),
+      issue(11, { parent: 10 }),
+      issue(5),
+    ])
+
+    expect(groups.find((g) => g.name.kind === 'linked')).toBeUndefined()
+    expect(groups.find((g) => g.name.kind === 'island')?.members).toEqual([5])
+  })
 })
 
 describe('關鍵路徑', () => {
