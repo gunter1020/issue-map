@@ -1,10 +1,7 @@
-# Architecture Decision Records
+# 架構決定記錄（ADR）
 
-One file per decision, numbered in order: `0001-short-slug.md`, `0002-….md`.
+每項決定獨立成檔，依序編號：`0001-short-slug.md`、`0002-….md`。
 
-Each record states the context, the decision, and what it costs. A decision that turns out wrong is
-superseded by a new record, not edited in place — the point is that the reasoning stays readable
-after the fact.
+每份記錄說明背景、決定與代價。事後發現有誤的決定會由一份新記錄取代，而不原地修改——重點是讓當初的推論脈絡事後依然讀得懂。
 
-Records are written when a decision is actually made, not upfront. `/domain-modeling` creates them
-as terms and decisions get resolved.
+記錄只在真的做出決定時才寫，不預先編造；隨領域詞彙與設計定案，由 `/domain-modeling` 逐步建立。
